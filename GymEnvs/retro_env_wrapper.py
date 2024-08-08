@@ -41,10 +41,13 @@ class MarioEnv(gym.Env):
         self.level_index = 0
 
         # initialise the gym retro_env
-        self.retro_env = self.initialise_retro_env()
+        self.retro_env, _ = self.initialise_retro_env()
 
         self.horizontal_position = 40
         self.done = False
+
+        self.history = []
+        self.episode_cumulative_reward = 0
 
         # Define action and observation space
         # They must be gym.spaces objects
@@ -59,7 +62,11 @@ class MarioEnv(gym.Env):
         else:
             self.levels_to_use = TEST_LEVELS
 
-    def change_level(self):
+    def change_level(self, fixed_level=None):
+
+        if fixed_level is not None:
+            self.level = fixed_level
+
         if self.level_change_type == RANDOM:
             level_int = np.random.randint(len(self.levels_to_use))
             self.level = self.levels_to_use[level_int]
@@ -75,28 +82,28 @@ class MarioEnv(gym.Env):
 
         return self.level
 
-    def initialise_retro_env(self):
+    def initialise_retro_env(self, fixed_level=None):
         if self.retro_env is not None:
             self.retro_env.close()
 
-        self.level = self.change_level()
+        self.level = self.change_level(fixed_level)
         
         if self.record_option:
             self.retro_env = retro.make(game=GAME_NAME, state=self.level, record=self.record_option)
         else:
             self.retro_env = retro.make(game=GAME_NAME, state=self.level)
             
-        self.reset()
+        obs, _ = self.reset()
         
-        return self.retro_env
+        return self.retro_env, obs
     
     def set_record_option(self, option):
         self.record_option = option
-        self.retro_env = self.initialise_retro_env()
+        self.retro_env, _ = self.initialise_retro_env()
         
     def set_level(self, level):
         self.level = level
-        self.retro_env = self.initialise_retro_env()
+        self.retro_env, _ = self.initialise_retro_env()
 
     def process_observation(self, obs):
         # Convert the frame to grayscale
@@ -155,6 +162,7 @@ class MarioEnv(gym.Env):
         self.state = self.process_observation(obs)
 
         reward = self.horizontal_reward(info)
+        self.episode_cumulative_reward += reward
 
         if info["lives"] != 2: # reset on lives changing to match human demo collection methods
             done = True
@@ -162,7 +170,10 @@ class MarioEnv(gym.Env):
         self.done = done
 
         if self.done:
+            self.history.append({'epsiode_num': self.num_episodes_since_change, 'level': self.level, 'reward': reward, 'episode_cumulative_reward': self.episode_cumulative_reward})
+
             self.num_episodes_since_change += 1
+            self.episode_cumulative_reward = 0
 
         return self.state, reward, self.done, False, info
 
