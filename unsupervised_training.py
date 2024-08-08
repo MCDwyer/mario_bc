@@ -9,7 +9,7 @@ from stable_baselines3.common.logger import configure
 import json
 import sys
 
-TIMESTEPS = 10000
+TIMESTEPS = 100
 UNSUPERVISED = True
 
 def main(agent_index):
@@ -72,7 +72,7 @@ def main(agent_index):
 
     # save the history from the env
     history_json_filepath = log_dir + f"{string_timesteps}_{model_name}_{agent_index}.json"
-    with open("history_json_filepath", "w") as outfile:
+    with open(history_json_filepath, "w") as outfile:
         json.dump(env.history, outfile)
 
     # env.set_record_option("test_bk2s/.")
@@ -88,7 +88,7 @@ def main(agent_index):
     im = ax.imshow(np.zeros((84, 84)), cmap='gray', vmin=0, vmax=255)
 
     global OBS
-    OBS, _ = env.initialise_retro_env("Level1-1")
+    _, OBS = env.initialise_retro_env("Level1-1")
 
     # Function to update the image
     def update_img(frame):
@@ -99,7 +99,7 @@ def main(agent_index):
         obs = np.array(OBS).squeeze()
 
         if done:
-            OBS, _ = env.reset()
+            _, OBS = env.reset()
 
         # Update the image data
         im.set_data(obs)
