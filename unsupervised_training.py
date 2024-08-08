@@ -97,7 +97,7 @@ def main(agent_index):
         obs = np.array(OBS).squeeze()
 
         if done:
-            _, OBS = env.reset()
+            _, OBS = env.initialise_retro_env("Level1-1")
 
         # Update the image data
         im.set_data(obs)
