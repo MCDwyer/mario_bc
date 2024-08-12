@@ -98,7 +98,7 @@ def main(agent_index):
     im = ax.imshow(np.zeros((84, 84)), cmap='gray', vmin=0, vmax=255)
 
     global OBS
-    _, OBS = env.initialise_retro_env("Level1-1")
+    OBS, _ = env.reset(options={"level": "Level1-1"})
 
     # Function to update the image
     def update_img(frame):
@@ -109,8 +109,7 @@ def main(agent_index):
         obs = np.array(OBS).squeeze()
 
         if done:
-            _, OBS = env.initialise_retro_env("Level1-1")
-
+            OBS, _ = env.reset(options={"level": "Level1-1"})
         # Update the image data
         im.set_data(obs)
         return [im]

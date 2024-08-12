@@ -119,7 +119,13 @@ class MarioEnv(gym.Env):
 
     def reset(self, seed=None, options=None):
 
-        self.retro_env, obs = self.initialise_retro_env()
+        level = None
+
+        if options is not None:
+            if "level" in options:
+                level = options["level"]
+
+        self.retro_env, obs = self.initialise_retro_env(level)
 
         # obs = self.retro_env.reset()
 

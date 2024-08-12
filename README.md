@@ -11,6 +11,7 @@ pandas
 plotly
 nbformat
 kaleido
+nbformat
 
 for clustering:
 scikit-learn
@@ -24,6 +25,7 @@ for models:
 stable-baselines3
 gymnasium
 cv2 (opencv-python)
+optuna (for hyper-parameter tuning)
 
 for training stable baselines3 logs:
 tensorboard
