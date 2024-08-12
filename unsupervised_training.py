@@ -9,10 +9,10 @@ from stable_baselines3.common.logger import configure
 import json
 import sys
 
-TIMESTEP_INCREMENT = 100
-TIMESTEPS = 200
+TIMESTEP_INCREMENT = 1000000
+TIMESTEPS = 1000000
 UNSUPERVISED = True
-RETRAINING = True
+RETRAINING = False
 MODEL_NAME = "PPO"
 MODEL_CLASS = PPO
 POLICY = "CnnPolicy"
@@ -56,15 +56,15 @@ def main(agent_index):
 
     model_path = log_dir + f"{string_timesteps}_{MODEL_NAME}_{agent_index}"
 
-    # Configure logging
-    tmp_path = log_dir + "/tmp/"
-    new_logger = configure(tmp_path, ["stdout", "csv", "tensorboard"])
-    model.set_logger(new_logger)
-
     if UNSUPERVISED:
         name_prefix = f"unsupervised_{MODEL_NAME}_{agent_index}"
     else:
         name_prefix = f"supervised_{MODEL_NAME}_with_{TRAINING_DATA_NAME}_{agent_index}"
+
+    # Configure logging
+    tmp_path = log_dir + f"/{name_prefix}/"
+    new_logger = configure(tmp_path, ["stdout", "csv", "tensorboard"])
+    model.set_logger(new_logger)
 
     # Define callbacks
     eval_callback = EvalCallback(env, best_model_save_path=f"{log_dir}{name_prefix}/",
