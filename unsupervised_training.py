@@ -9,8 +9,10 @@ from stable_baselines3.common.logger import configure
 import json
 import sys
 
-TIMESTEPS = 100
+TIMESTEP_INCREMENT = 100
+TIMESTEPS = 200
 UNSUPERVISED = True
+RETRAINING = True
 MODEL_NAME = "PPO"
 MODEL_CLASS = PPO
 POLICY = "CnnPolicy"
@@ -44,7 +46,15 @@ def main(agent_index):
 
     string_timesteps = f"{int(TIMESTEPS/1000)}k"
 
-    model = MODEL_CLASS(POLICY, env, verbose=1, tensorboard_log=log_dir)
+    if RETRAINING:
+        previous_timestep_string = f"{int((TIMESTEPS-TIMESTEP_INCREMENT)/1000)}k"
+        previous_model_path = log_dir + f"{previous_timestep_string}_{MODEL_NAME}_{agent_index}"
+
+        model = MODEL_CLASS.load(previous_model_path, env, verbose=1, tensorboard_log=log_dir)
+    else:
+        model = MODEL_CLASS(POLICY, env, verbose=1, tensorboard_log=log_dir)
+
+    model_path = log_dir + f"{string_timesteps}_{MODEL_NAME}_{agent_index}"
 
     # Configure logging
     tmp_path = log_dir + "/tmp/"
@@ -57,7 +67,7 @@ def main(agent_index):
         name_prefix = f"supervised_{MODEL_NAME}_with_{TRAINING_DATA_NAME}_{agent_index}"
 
     # Define callbacks
-    eval_callback = EvalCallback(env, best_model_save_path=log_dir,
+    eval_callback = EvalCallback(env, best_model_save_path=f"{log_dir}{name_prefix}/",
                                 log_path=log_dir, eval_freq=500,
                                 deterministic=True, render=False)
     checkpoint_callback = CheckpointCallback(save_freq=100000, save_path=log_dir,
@@ -65,18 +75,19 @@ def main(agent_index):
 
 
     # Train the model
-    model.learn(total_timesteps=TIMESTEPS, callback=[eval_callback, checkpoint_callback])
-    model.save(log_dir + f"{string_timesteps}_{MODEL_NAME}_{agent_index}")
+    model.learn(total_timesteps=TIMESTEP_INCREMENT, callback=[eval_callback, checkpoint_callback])
+    model.save(model_path)
 
     # save the history from the env
-    history_json_filepath = log_dir + f"{string_timesteps}_{MODEL_NAME}_{agent_index}.json"
+    history_json_filepath = f"{model_path}.json"
+
     with open(history_json_filepath, "w") as outfile:
         json.dump(env.history, outfile)
 
     # env.set_record_option("test_bk2s/.")
 
     # Load the trained agent to check it's saved properly
-    model = MODEL_CLASS.load(log_dir + f"{string_timesteps}_{MODEL_NAME}_{agent_index}")
+    model = MODEL_CLASS.load(model_path)
 
     # Run a 1000 timesteps to generate a gif just as a check measure (not actual evaluation)
     # Create a figure and axis
