@@ -31,7 +31,7 @@ class MarioEnv(gym.Env):
         self.level = "Level1-1"
         self._use_training_levels = True
 
-        self.level_change_type = RANDOM
+        self.level_change_type = RANDOM#NO_CHANGE
         self.num_episodes_since_change = 0
         self.all_levels = ["Level1-1", "Level2-1", "Level3-1", "Level4-1", "Level5-1", "Level6-1", "Level7-1", "Level8-1"]
 
@@ -39,6 +39,7 @@ class MarioEnv(gym.Env):
 
         self.curriculum_threshold = None
         self.level_index = 0
+        self.timesteps = 0
 
         # initialise the gym retro_env
         self.retro_env, _ = self.initialise_retro_env()
@@ -87,16 +88,18 @@ class MarioEnv(gym.Env):
             self.retro_env.close()
 
         self.level = self.change_level(fixed_level)
-        
+
+        print(f"New level: {self.level}")
+
         if self.record_option:
             self.retro_env = retro.make(game=GAME_NAME, state=self.level, record=self.record_option)
         else:
             self.retro_env = retro.make(game=GAME_NAME, state=self.level)
-            
-        obs, _ = self.reset()
-        
+
+        obs = self.retro_env.reset()
+
         return self.retro_env, obs
-    
+
     def set_record_option(self, option):
         self.record_option = option
         self.retro_env, _ = self.initialise_retro_env()
@@ -115,13 +118,17 @@ class MarioEnv(gym.Env):
         return obs
 
     def reset(self, seed=None, options=None):
-        # Reset the state of the environment to an initial state
-        obs = self.retro_env.reset()
+
+        self.retro_env, obs = self.initialise_retro_env()
+
+        # obs = self.retro_env.reset()
 
         self.state = self.process_observation(obs)
         self.horizontal_position = 40 # I think this is what it should start as?
         self.done = False
-        return (self.state, {})
+        self.episode_cumulative_reward = 0
+
+        return self.state, {}
     
     def horizontal_reward(self, info):
 
@@ -159,6 +166,7 @@ class MarioEnv(gym.Env):
             if done:
                 break
 
+        self.timesteps += 1
         self.state = self.process_observation(obs)
 
         reward = self.horizontal_reward(info)
@@ -170,10 +178,8 @@ class MarioEnv(gym.Env):
         self.done = done
 
         if self.done:
-            self.history.append({'epsiode_num': self.num_episodes_since_change, 'level': self.level, 'reward': reward, 'episode_cumulative_reward': self.episode_cumulative_reward})
-
+            self.history.append({'epsiode_num': self.num_episodes_since_change, 'level': self.level, 'reward': reward, 'episode_cumulative_reward': self.episode_cumulative_reward, 'num_timesteps': self.timesteps})
             self.num_episodes_since_change += 1
-            self.episode_cumulative_reward = 0
 
         return self.state, reward, self.done, False, info
 

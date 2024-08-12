@@ -18,6 +18,7 @@ MODEL_CLASS = PPO
 POLICY = "CnnPolicy"
 TRAINING_DATA_NAME = "amalgam"
 LEVEL_CHANGE = "random"
+# LEVEL_CHANGE = "single_level_Level1-1"
 
 # training_data_name = "expert_dist"
 # training_data_name = "nonexpert_dist"
