@@ -23,7 +23,7 @@ matplotlib
 for models:
 stable-baselines3
 gymnasium
-cv2
+cv2 (opencv-python)
 
 for training stable baselines3 logs:
 tensorboard
