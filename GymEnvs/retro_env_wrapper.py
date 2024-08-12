@@ -89,7 +89,7 @@ class MarioEnv(gym.Env):
 
         self.level = self.change_level(fixed_level)
 
-        print(f"New level: {self.level}")
+        # print(f"New level: {self.level}")
 
         if self.record_option:
             self.retro_env = retro.make(game=GAME_NAME, state=self.level, record=self.record_option)
