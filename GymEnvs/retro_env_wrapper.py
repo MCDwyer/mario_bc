@@ -3,6 +3,7 @@ from gymnasium import spaces
 import numpy as np
 import cv2
 import retro
+import copy
 
 STICKY_TIME_STEPS = 4
 GAME_NAME = 'SuperMarioBros-Nes'
@@ -184,7 +185,7 @@ class MarioEnv(gym.Env):
         self.done = done
 
         if self.done:
-            self.history.append({'epsiode_num': self.num_episodes_since_change, 'level': self.level, 'reward': reward, 'episode_cumulative_reward': self.episode_cumulative_reward, 'num_timesteps': self.timesteps})
+            self.history.append({'epsiode_num': self.num_episodes_since_change, 'level': copy.deepcopy(self.level), 'reward': reward, 'episode_cumulative_reward': self.episode_cumulative_reward, 'num_timesteps': self.timesteps})
             self.num_episodes_since_change += 1
 
         return self.state, reward, self.done, False, info

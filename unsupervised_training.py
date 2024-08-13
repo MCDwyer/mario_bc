@@ -8,16 +8,22 @@ from stable_baselines3.common.callbacks import EvalCallback, CheckpointCallback
 from stable_baselines3.common.logger import configure
 import json
 import sys
+import pickle
+import copy
+
+import behavioural_cloning
 
 TIMESTEP_INCREMENT = 1000000
 TIMESTEPS = 1000000
-UNSUPERVISED = True
+UNSUPERVISED = False
 RETRAINING = False
 MODEL_NAME = "PPO"
 MODEL_CLASS = PPO
 POLICY = "CnnPolicy"
 TRAINING_DATA_NAME = "amalgam"
 LEVEL_CHANGE = "random"
+
+TRAINING_FILEPATH = "/Users/mdwyer/Documents/Code/PhD_Mario_Work/mario_bc/user_data_processed_for_bc/amalgam_bc_data.obj"
 # LEVEL_CHANGE = "single_level_Level1-1"
 
 # training_data_name = "expert_dist"
@@ -47,6 +53,8 @@ def main(agent_index):
 
     string_timesteps = f"{int(TIMESTEPS/1000)}k"
 
+    model_path = log_dir + f"{string_timesteps}_{MODEL_NAME}_{agent_index}"
+
     if RETRAINING:
         previous_timestep_string = f"{int((TIMESTEPS-TIMESTEP_INCREMENT)/1000)}k"
         previous_model_path = log_dir + f"{previous_timestep_string}_{MODEL_NAME}_{agent_index}"
@@ -55,12 +63,19 @@ def main(agent_index):
     else:
         model = MODEL_CLASS(POLICY, env, verbose=1, tensorboard_log=log_dir)
 
-    model_path = log_dir + f"{string_timesteps}_{MODEL_NAME}_{agent_index}"
+        if not UNSUPERVISED:
+            # bc_model, bc_model_path = behavioural_cloning.behavioural_cloning_with_imitation(env, model_path, TRAINING_FILEPATH)
+            # model = MODEL_CLASS.load(bc_model_path, env, verbose=1, tensorboard_log=log_dir)
+            # print(env.action_space)
+            bc_model_path = f"{model_path}_bc"
+            model = behavioural_cloning.behavioural_cloning(model, TRAINING_FILEPATH, bc_model_path)
+
+    print(model.policy)
 
     if UNSUPERVISED:
-        name_prefix = f"unsupervised_{MODEL_NAME}_{agent_index}"
+        name_prefix = f"unsupervised_{MODEL_NAME}_{string_timesteps}_{agent_index}"
     else:
-        name_prefix = f"supervised_{MODEL_NAME}_with_{TRAINING_DATA_NAME}_{agent_index}"
+        name_prefix = f"supervised_{MODEL_NAME}_with_{TRAINING_DATA_NAME}_{string_timesteps}_{agent_index}"
 
     # Configure logging
     tmp_path = log_dir + f"/{name_prefix}/"
@@ -73,7 +88,6 @@ def main(agent_index):
                                 deterministic=True, render=False)
     checkpoint_callback = CheckpointCallback(save_freq=100000, save_path=log_dir,
                                             name_prefix=name_prefix)
-
 
     # Train the model
     model.learn(total_timesteps=TIMESTEP_INCREMENT, callback=[eval_callback, checkpoint_callback])
