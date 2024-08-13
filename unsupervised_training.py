@@ -21,9 +21,12 @@ MODEL_NAME = "PPO"
 MODEL_CLASS = PPO
 POLICY = "CnnPolicy"
 TRAINING_DATA_NAME = "amalgam"
+TRAINING_DATA_NAME = "expert_distance"
+TRAINING_DATA_NAME = "nonexpert_distance"
 LEVEL_CHANGE = "random"
 
 TRAINING_FILEPATH = "/Users/mdwyer/Documents/Code/PhD_Mario_Work/mario_bc/user_data_processed_for_bc/amalgam_bc_data.obj"
+TRAINING_FILEPATH += TRAINING_DATA_NAME + "_bc_data.obj"
 # LEVEL_CHANGE = "single_level_Level1-1"
 
 # training_data_name = "expert_dist"
