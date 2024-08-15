@@ -5,8 +5,8 @@ import numpy as np
 import matplotlib.pyplot as plt
 import matplotlib.animation as animation
 import sys
-from scipy.stats import mannwhitneyu, shapiro, levene, ttest_ind
-
+from scipy.stats import mannwhitneyu, shapiro, levene, ttest_ind, ttest_rel, wilcoxon, kruskal, f_oneway
+# from statsmodels.stats.multicomp import pairwise_tukeyhsd
 
 TIMESTEP_INCREMENT = 1000000
 TIMESTEPS = 1000000
@@ -66,6 +66,107 @@ def get_results(model, env):
 
     return mean_rewards
 
+def two_agent_statistical_tests(unsupervised_results, supervised_results):
+    # Check the normality:
+    # Run the Shapiro-Wilk test
+    stat, p_value = shapiro(unsupervised_results)
+    print(f"Unsupervised: Shapiro-Wilk Test Statistic: {stat}, P-value: {p_value}")
+
+    stat, p_value = shapiro(supervised_results)
+    print(f"Supervised Shapiro-Wilk Test Statistic: {stat}, P-value: {p_value}")
+
+    # Perform Levene's Test
+    stat, p_value = levene(unsupervised_results, supervised_results)
+
+    print(f"Levene’s Test Statistic: {stat:.4f}, P-value: {p_value:.4f}")        
+
+    # Example: Assuming 'unsupervised_results' and 'supervised_results' are your performance metrics
+    t_stat, p_value = ttest_ind(unsupervised_results, supervised_results)
+
+    print(f"T-statistic: {t_stat}, P-value: {p_value}")
+
+    # Example: Mann-Whitney U Test
+    u_stat, p_value = mannwhitneyu(unsupervised_results, supervised_results)
+
+    print(f"U-statistic: {u_stat}, P-value: {p_value}")
+
+    # Perform paired t-test
+    stat, p_value = ttest_rel(unsupervised_results, supervised_results)
+
+    print(f"Paired t-test Statistic: {stat:.4f}, P-value: {p_value:.4f}")
+
+    stat, p_value = wilcoxon(unsupervised_results, supervised_results)
+
+    print(f"Wilcoxon Signed-Rank Test Statistic: {stat:.4f}, P-value: {p_value:.4f}")
+
+def four_agent_statistical_tests(agent_1, agent_2, agent_3, agent_4, mean_rewards=True):
+
+    # Perform Levene's Test across four groups
+    stat, p_value = levene(agent_1, agent_2, agent_3, agent_4)
+
+    print(f"Levene’s Test Statistic (on all 4): {stat}, P-value: {p_value}")
+
+    if mean_rewards:
+        print("One way ANOVA (best on means):")
+        f_stat, p_value = f_oneway(agent_1, agent_2, agent_3, agent_4)
+
+        print(f"F-statistic: {f_stat}, P-value: {p_value}")
+
+        # print("If ANOVA shows significant results, use Tukey’s HSD (Honestly Significant Difference) test to identify which groups are different.")
+        # # Combine all rewards into a single array
+        # all_rewards = agent_1 + agent_2 + agent_3 + agent_4
+        # # Create labels for each group
+        # groups = (['Agent1'] * len(agent_1) +
+        #         ['Agent2'] * len(agent_2) +
+        #         ['Agent3'] * len(agent_3) +
+        #         ['Agent4'] * len(agent_4))
+
+        # # Perform Tukey's HSD test
+        # tukey = pairwise_tukeyhsd(endog=all_rewards, groups=groups, alpha=0.05)
+        # print(tukey)
+    else:
+        print("Kruskal-Wallis H test")
+        # Perform Kruskal-Wallis H Test
+        h_stat, p_value = kruskal(agent_1, agent_2, agent_3, agent_4)
+
+        print(f"Kruskal-Wallis H-statistic: {h_stat}, P-value: {p_value}")
+
+    print()
+    print()
+
+def load_model_get_results(dir_path, string_timesteps, env, level_results, results, agent_index):
+    model_path = dir_path + f"{string_timesteps}_{MODEL_NAME}_{agent_index}"
+
+    model = MODEL_CLASS.load(model_path, env, verbose=1)
+
+    mean_reward, rewards = evaluate_model(model, env, TEST_EPISODES)
+
+    level_results.append(mean_reward)
+
+    if results is None:
+        results = np.array(rewards)
+    else:
+        results = np.vstack((results, np.array(rewards)))
+        
+    return level_results, results
+
+def combine_level_data(results, agent_name):
+    all_means = None
+    all_data = None
+
+    for level in results:
+        if all_means is None:
+            all_means = np.array(results[level][agent_name]["means"])
+        else:
+            all_means = np.vstack((all_means, np.array(results[level][agent_name]["means"])))
+
+        if all_data is None:
+            all_data = np.array(results[level][agent_name]["all rewards"])
+        else:
+            all_data = np.vstack((all_data, np.array(results[level][agent_name]["all rewards"])))
+
+    return all_means, all_data
+
 def main(agent_index):
 
     register(
@@ -83,65 +184,95 @@ def main(agent_index):
 
     env.level_change_type = "No Change"
 
-    results = {}
+    results_dict = {}
+
+    dir_paths = {"unsupervised": f"{log_dir}unsupervised/", 
+                 "supervised - amalgam": f"{log_dir}supervised/amalgam/", 
+                 "supervised - expert": f"{log_dir}supervised/expert_distance/", 
+                 "supervised - nonexpert": f"{log_dir}supervised/nonexpert_distance/"}
 
     for level in ALL_LEVELS:
         env.level = level
-        results[level] = {"unsupervised": [], "supervised": []}
-
-        unsupervised_results = []
-        supervised_results = []
+        results_dict[level] = {}
         print(level)
 
-        for agent_index in AGENT_INDICES:
-            unsupervised_log_dir = f"{log_dir}unsupervised/"
-            unsupervised_model_path = unsupervised_log_dir + f"{string_timesteps}_{MODEL_NAME}_{agent_index}"
+        for agent_name in dir_paths:
+            print(agent_name)
+            results_dict[level][agent_name] = {"means": []}
 
-            supervised_log_dir = f"{log_dir}supervised/{TRAINING_DATA_NAME}/"
-            supervised_model_path = supervised_log_dir + f"{string_timesteps}_{MODEL_NAME}_{agent_index}"
+            means_list = results_dict[level][agent_name]["means"]
 
-            unsupervised_model = MODEL_CLASS.load(unsupervised_model_path, env, verbose=1)
-            supervised_model = MODEL_CLASS.load(supervised_model_path, env, verbose=1)
+            results = None
 
-            mean_reward, rewards = evaluate_model(unsupervised_model, env, TEST_EPISODES)
+            for agent_index in AGENT_INDICES:
+                means_list, results = load_model_get_results(dir_paths[agent_name], string_timesteps, env, means_list, results, agent_index)
 
-            results[level]["unsupervised"].append(mean_reward)
-            unsupervised_results.append(rewards)
+            results_dict[level][agent_name]["all rewards"] = results
+        
+    
+    # TODO: stop it from doing the same test twice (like 0, 1 and 1, 0)
 
-            mean_reward, rewards = evaluate_model(supervised_model, env, TEST_EPISODES)
-            
-            results[level]["supervised"].append(mean_reward)
-            supervised_results.append(rewards)
-            
-        # Check the normality:
-        # Run the Shapiro-Wilk test
-        stat, p_value = shapiro(results[level]["unsupervised"])
+    combined_results = {}
 
-        print(f"Shapiro-Wilk Test Statistic: {stat}, P-value: {p_value}")
+    # run statistical tests on two agents
+    for i, agent_name_1 in enumerate(dir_paths):
+        for j, agent_name_2, in enumerate(dir_paths):        
+            combined_results[agent_name_2] = {}
+            combined_results[agent_name_2]["means"], combined_results[agent_name_2]["all rewards"] = combine_level_data(results, agent_name_2)
 
-        stat, p_value = shapiro(results[level]["supervised"])
+            if i == j:
+                # skip as same agent
+                continue
 
-        print(f"Shapiro-Wilk Test Statistic: {stat}, P-value: {p_value}")
+            print(f"2 agent tests on '{agent_name_1}' and '{agent_name_2}'")
 
-        # Flatten the lists to combine results from all agents in each group
-        unsupervised_flat = [reward for agent in unsupervised_results for reward in agent]
-        supervised_flat = [reward for agent in supervised_results for reward in agent]
+            for level in results_dict:
+                print(f"Per level tests on {level}")
 
-        # Perform Levene's Test
-        stat, p_value = levene(unsupervised_flat, supervised_flat)
+                print("Tests on the mean rewards:")
+                two_agent_statistical_tests(results_dict[level][agent_name_1]["means"], results_dict[level][agent_name_2]["means"])
+                print()
 
-        print(f"Levene’s Test Statistic: {stat:.4f}, P-value: {p_value:.4f}")        
+                print("Tests on all the rewards:")
+                two_agent_statistical_tests(results_dict[level][agent_name_1]["all rewards"], results_dict[level][agent_name_2]["all rewards"])
+                print()
+                print()
 
-        # Example: Assuming 'unsupervised_results' and 'supervised_results' are your performance metrics
-        t_stat, p_value = ttest_ind(unsupervised_results, supervised_results)
 
-        print(f"T-statistic: {t_stat}, P-value: {p_value}")
+            print("Tests on all levels combined:")
+            print("Tests on the mean rewards:")
+            two_agent_statistical_tests(combined_results[agent_name_1]["means"], combined_results[agent_name_2]["means"])
+            print()
 
-        # Example: Mann-Whitney U Test
-        u_stat, p_value = mannwhitneyu(unsupervised_results, supervised_results)
+            print("Tests on all the rewards:")
+            two_agent_statistical_tests(combined_results[agent_name_1]["all rewards"], combined_results[agent_name_2]["all rewards"])
+            print()
+            print()
 
-        print(f"U-statistic: {u_stat}, P-value: {p_value}")
+    # more than two agent tests
+    if len(dir_paths) > 2:
+        
+        for level in results_dict:
+            print(f"Per level tests on {level}:")
 
+            print("Tests on the mean rewards:")
+            four_agent_statistical_tests(results_dict[level]["unsupervised"]["means"], results_dict[level]["supervised - amalgam"]["means"], results_dict[level]["supervised - expert"]["means"], results_dict[level]["supervised - nonexpert"]["means"])
+
+            print("Tests on all the rewards:")
+            four_agent_statistical_tests(results_dict[level]["unsupervised"]["all rewards"], results_dict[level]["supervised - amalgam"]["all rewards"], results_dict[level]["supervised - expert"]["all rewards"], results_dict[level]["supervised - nonexpert"]["all rewards"])
+
+            print()
+            print()
+
+        print("Tests on all levels combined:")
+        print("Tests on the mean rewards:")
+        four_agent_statistical_tests(combined_results["unsupervised"]["means"], combined_results["supervised - amalgam"]["means"], combined_results["supervised - expert"]["means"], combined_results["supervised - nonexpert"]["means"])
+        print()
+
+        print("Tests on all the rewards:")
+        four_agent_statistical_tests(combined_results["unsupervised"]["all rewards"], combined_results["supervised - amalgam"]["all rewards"], combined_results["supervised - expert"]["all rewards"], combined_results["supervised - nonexpert"]["all rewards"], mean_rewards=False)
+        print()
+        print()
 
     # # Run a 1000 timesteps to generate a gif just as a check measure (not actual evaluation)
     # # Create a figure and axis
