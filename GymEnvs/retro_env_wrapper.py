@@ -3,7 +3,7 @@ from gymnasium import spaces
 import numpy as np
 import cv2
 import retro
-import retrowrapper
+# import retrowrapper
 import copy
 
 STICKY_TIME_STEPS = 4
@@ -124,11 +124,11 @@ class MarioEnv(gym.Env):
         # print(f"New level: {self.level}")
 
         if self.record_option:
-            self.retro_env = retrowrapper.RetroWrapper(game=GAME_NAME, state=self.level, record=self.record_option)
-            # self.retro_env = retro.make(game=GAME_NAME, state=self.level, record=self.record_option)
+            # self.retro_env = retrowrapper.RetroWrapper(game=GAME_NAME, state=self.level, record=self.record_option)
+            self.retro_env = retro.make(game=GAME_NAME, state=self.level, record=self.record_option)
         else:
-            self.retro_env = retrowrapper.RetroWrapper(game=GAME_NAME, state=self.level)
-            # self.retro_env = retro.make(game=GAME_NAME, state=self.level)
+            # self.retro_env = retrowrapper.RetroWrapper(game=GAME_NAME, state=self.level)
+            self.retro_env = retro.make(game=GAME_NAME, state=self.level)
 
         obs = self.retro_env.reset()
 
