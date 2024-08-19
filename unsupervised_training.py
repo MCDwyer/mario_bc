@@ -10,10 +10,9 @@ import json
 import sys
 
 import behavioural_cloning
-from custom_cnn_policy import CustomCNNExtractor
 
 TIMESTEP_INCREMENT = 1000000
-TIMESTEPS = 1000000
+TIMESTEPS = 3000000
 UNSUPERVISED = True
 RETRAINING = False
 MODEL_NAME = "PPO"
@@ -24,7 +23,7 @@ TRAINING_DATA_NAME = "amalgam"
 # TRAINING_DATA_NAME = "nonexpert_distance"
 LEVEL_CHANGE = "random"
 
-TRAINING_FILEPATH = "/Users/mdwyer/Documents/Code/PhD_Mario_Work/mario_bc/user_data_processed_for_bc/"
+TRAINING_FILEPATH = "user_data_processed_for_bc/"
 TRAINING_FILEPATH += TRAINING_DATA_NAME + "_bc_data.obj"
 # LEVEL_CHANGE = "single_level_Level1-1"
 
