@@ -3,9 +3,9 @@ import torch.nn as nn
 import numpy as np
 import pickle
 
-from imitation.data.types import Trajectory, Transitions
-from imitation.data import rollout
-from imitation.algorithms import bc
+# from imitation.data.types import Trajectory, Transitions
+# from imitation.data import rollout
+# from imitation.algorithms import bc
 
 from custom_cnn_policy import train_cnn
 
@@ -14,43 +14,43 @@ NUM_EPOCHS = 10
 BATCH_SIZE = 64
 LEARNING_RATE = 1e-3
 
-def behavioural_cloning_with_imitation(env, model_path, training_filepath):
+# def behavioural_cloning_with_imitation(env, model_path, training_filepath):
 
-    # load in data
-    with open(training_filepath, 'rb') as file:
-        trajectories = pickle.load(file)
+#     # load in data
+#     with open(training_filepath, 'rb') as file:
+#         trajectories = pickle.load(file)
 
-    trajectories = np.array(trajectories)
+#     trajectories = np.array(trajectories)
 
-    infos = [{} for _ in range(len(trajectories))]  # Empty dicts, assuming no additional info is available
+#     infos = [{} for _ in range(len(trajectories))]  # Empty dicts, assuming no additional info is available
 
-    observations = trajectories[:, 0]
-    actions = trajectories[:, 1]
-    done = np.array(trajectories[:, 2], dtype=bool)
-    next_observations = trajectories[:, 3]
+#     observations = trajectories[:, 0]
+#     actions = trajectories[:, 1]
+#     done = np.array(trajectories[:, 2], dtype=bool)
+#     next_observations = trajectories[:, 3]
 
-    # Convert expert data into Trajectories or Transitions
-    transitions = Transitions(obs=observations, acts=actions, infos=infos, next_obs=next_observations, dones=done)
+#     # Convert expert data into Trajectories or Transitions
+#     transitions = Transitions(obs=observations, acts=actions, infos=infos, next_obs=next_observations, dones=done)
 
-    # Initialize the BC algorithm
-    bc_trainer = bc.BC(
-        expert_data=transitions,
-        # policy_class=MODEL_CLASS,  # The policy class to be used
-        # policy_kwargs=dict(policy=POLICY),  # Optional: modify network architecture
-        # env=env,
-        observation_space=env.observation_space,
-        action_space=env.action_space,
-    )
+#     # Initialize the BC algorithm
+#     bc_trainer = bc.BC(
+#         expert_data=transitions,
+#         # policy_class=MODEL_CLASS,  # The policy class to be used
+#         # policy_kwargs=dict(policy=POLICY),  # Optional: modify network architecture
+#         # env=env,
+#         observation_space=env.observation_space,
+#         action_space=env.action_space,
+#     )
 
-    # Train the model using behavior cloning
-    bc_trainer.train(n_epochs=NUM_EPOCHS)
+#     # Train the model using behavior cloning
+#     bc_trainer.train(n_epochs=NUM_EPOCHS)
 
-    bc_model_path = f"{model_path}_bc"
+#     bc_model_path = f"{model_path}_bc"
 
-    # Save the trained model
-    bc_trainer.policy.save(bc_model_path)
+#     # Save the trained model
+#     bc_trainer.policy.save(bc_model_path)
 
-    return bc_trainer, bc_model_path
+#     return bc_trainer, bc_model_path
 
 # def preprocess_observations(observations):
 #     # Normalize observations (e.g., images with values between 0 and 255)
