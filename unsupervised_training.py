@@ -8,35 +8,63 @@ from stable_baselines3.common.callbacks import EvalCallback, CheckpointCallback
 from stable_baselines3.common.logger import configure
 import json
 import sys
-import pickle
-import copy
 
 import behavioural_cloning
+from custom_cnn_policy import CustomCNNExtractor
 
 TIMESTEP_INCREMENT = 1000000
 TIMESTEPS = 1000000
-UNSUPERVISED = False
+UNSUPERVISED = True
 RETRAINING = False
 MODEL_NAME = "PPO"
 MODEL_CLASS = PPO
 POLICY = "CnnPolicy"
 TRAINING_DATA_NAME = "amalgam"
-TRAINING_DATA_NAME = "expert_distance"
-TRAINING_DATA_NAME = "nonexpert_distance"
+# TRAINING_DATA_NAME = "expert_distance"
+# TRAINING_DATA_NAME = "nonexpert_distance"
 LEVEL_CHANGE = "random"
 
 TRAINING_FILEPATH = "/Users/mdwyer/Documents/Code/PhD_Mario_Work/mario_bc/user_data_processed_for_bc/"
 TRAINING_FILEPATH += TRAINING_DATA_NAME + "_bc_data.obj"
 # LEVEL_CHANGE = "single_level_Level1-1"
 
-# training_data_name = "expert_dist"
-# training_data_name = "nonexpert_dist"
-
 # training_data_name = "expert_score"
 # training_data_name = "nonexpert_score"
 
 # training_data_name = "slower"
 # training_data_name = "faster"
+
+def ppo_model(env, log_dir):
+
+    if UNSUPERVISED:
+        # params = {'batch_size': 64, 'learning_rate': 0.0007849898563453707, 'n_steps': 3888, 'gamma': 0.9000390774580328, 'gae_lambda': 0.9432482269094022, 'ent_coef': 0.007674274866655088, 'clip_range': 0.20957139270537004, 'vf_coef': 0.5599428338540635}
+        params = {'batch_size': 1024, 'learning_rate': 0.0002771309599540991, 'n_steps': 2038, 'gamma': 0.9592756315428865, 'gae_lambda': 0.9917269088908877, 'ent_coef': 0.00025627959856235657, 'clip_range': 0.3932932134097107, 'vf_coef': 0.9279775875673197}
+    else:
+        params = {}
+
+    cnn_params = {}
+
+    # policy_kwargs = dict(
+    #     features_extractor_class=CustomCNNExtractor,
+    #     features_extractor_kwargs=dict(trial=cnn_params),
+    # )
+
+    model = PPO(POLICY,
+                env,
+                batch_size=params['batch_size'],
+                learning_rate=params['learning_rate'],
+                n_steps=params['n_steps'],
+                gamma=params['gamma'],
+                gae_lambda=params['gae_lambda'],
+                ent_coef=params['ent_coef'],
+                clip_range=params['clip_range'],
+                vf_coef=params['vf_coef'],
+                verbose=1,
+                tensorboard_log=log_dir,
+                # policy_kwargs=policy_kwargs,
+                )
+    
+    return model, cnn_params
 
 def main(agent_index):
 
@@ -64,16 +92,20 @@ def main(agent_index):
 
         model = MODEL_CLASS.load(previous_model_path, env, verbose=1, tensorboard_log=log_dir)
     else:
-        model = MODEL_CLASS(POLICY, env, verbose=1, tensorboard_log=log_dir)
+        print(MODEL_CLASS)
+        if MODEL_CLASS == PPO:
+            model, params = ppo_model(env, log_dir)
+        else:
+            model, params = MODEL_CLASS(POLICY, env, verbose=1, tensorboard_log=log_dir)
 
         if not UNSUPERVISED:
             # bc_model, bc_model_path = behavioural_cloning.behavioural_cloning_with_imitation(env, model_path, TRAINING_FILEPATH)
             # model = MODEL_CLASS.load(bc_model_path, env, verbose=1, tensorboard_log=log_dir)
             # print(env.action_space)
             bc_model_path = f"{model_path}_bc"
-            model = behavioural_cloning.behavioural_cloning(model, TRAINING_FILEPATH, bc_model_path)
+            model = behavioural_cloning.behavioural_cloning(model, TRAINING_FILEPATH, bc_model_path, params["cnn_learning_rate"], params[""])
 
-    print(model.policy)
+    # print(model.policy)
 
     if UNSUPERVISED:
         name_prefix = f"unsupervised_{MODEL_NAME}_{string_timesteps}_{agent_index}"
@@ -93,7 +125,8 @@ def main(agent_index):
                                             name_prefix=name_prefix)
 
     # Train the model
-    model.learn(total_timesteps=TIMESTEP_INCREMENT, callback=[eval_callback, checkpoint_callback])
+    timesteps = TIMESTEP_INCREMENT if RETRAINING else TIMESTEPS
+    model.learn(total_timesteps=timesteps, callback=[eval_callback, checkpoint_callback])
     model.save(model_path)
 
     # save the history from the env

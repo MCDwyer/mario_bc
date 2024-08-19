@@ -7,9 +7,12 @@ from imitation.data.types import Trajectory, Transitions
 from imitation.data import rollout
 from imitation.algorithms import bc
 
+from custom_cnn_policy import train_cnn
+
 
 NUM_EPOCHS = 10
 BATCH_SIZE = 64
+LEARNING_RATE = 1e-3
 
 def behavioural_cloning_with_imitation(env, model_path, training_filepath):
 
@@ -79,7 +82,7 @@ def load_data(filepath):
 
     return actions, observations
 
-def behavioural_cloning_training(model, actions, observations):
+def behavioural_cloning_training(model, actions, observations, lr, num_epochs, batch_size):
 
     # Convert observations and actions to tensors
     expert_actions = torch.tensor(actions, dtype=torch.float32, requires_grad=True)
@@ -92,47 +95,46 @@ def behavioural_cloning_training(model, actions, observations):
     model.policy.set_training_mode(True)
 
     # Define an optimizer
-    optimizer = torch.optim.Adam(model.policy.parameters(), lr=1e-3)
+    optimizer = torch.optim.Adam(model.policy.parameters(), lr=lr)
 
     # Set loss function: Cross Entropy Loss for discrete action spaces
     loss_fn = nn.CrossEntropyLoss()
 
-    n_epochs = NUM_EPOCHS
-    batch_size = BATCH_SIZE
+    model = train_cnn(expert_observations, expert_actions, num_epochs, batch_size, model, loss_fn, optimizer)
 
-    for epoch in range(n_epochs):
-        # Shuffle data at the start of each epoch
-        permutation = np.random.permutation(len(expert_observations))
-        expert_observations = expert_observations[permutation]
-        expert_actions = expert_actions[permutation]
+    # for epoch in range(num_epochs):
+    #     # Shuffle data at the start of each epoch
+    #     permutation = np.random.permutation(len(expert_observations))
+    #     expert_observations = expert_observations[permutation]
+    #     expert_actions = expert_actions[permutation]
         
-        for i in range(0, len(expert_observations), batch_size):
-            batch_obs = expert_observations[i:i + batch_size]
-            batch_actions = expert_actions[i:i + batch_size]
+    #     for i in range(0, len(expert_observations), batch_size):
+    #         batch_obs = expert_observations[i:i + batch_size]
+    #         batch_actions = expert_actions[i:i + batch_size]
 
-            # Forward pass: compute predicted actions by passing observations to the policy
-            logits, _, _ = model.policy(batch_obs)
+    #         # Forward pass: compute predicted actions by passing observations to the policy
+    #         logits, _, _ = model.policy(batch_obs)
 
-            # Calculate loss
-            loss = loss_fn(logits.float(), batch_actions.float())
+    #         # Calculate loss
+    #         loss = loss_fn(logits.float(), batch_actions.float())
 
-            # Backward pass: compute gradient of the loss with respect to model parameters
-            optimizer.zero_grad()
-            loss.backward(retain_graph=True)
+    #         # Backward pass: compute gradient of the loss with respect to model parameters
+    #         optimizer.zero_grad()
+    #         loss.backward(retain_graph=True)
 
-            # Update model parameters
-            optimizer.step()
+    #         # Update model parameters
+    #         optimizer.step()
 
-        print(f"Epoch {epoch + 1}/{n_epochs} - Loss: {loss.item()}")
+    #     print(f"Epoch {epoch + 1}/{num_epochs} - Loss: {loss.item()}")
 
     return model
 
 
-def behavioural_cloning(model, filepath, model_path):
+def behavioural_cloning(model, filepath, model_path, lr=1e-3, num_epochs=10, batch_size=64):
 
     actions, observations = load_data(filepath)
 
-    model = behavioural_cloning_training(model, actions, observations)
+    model = behavioural_cloning_training(model, actions, observations, lr, num_epochs, batch_size)
 
     model.save(model_path)
 

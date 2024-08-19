@@ -29,3 +29,7 @@ optuna (for hyper-parameter tuning)
 
 for training stable baselines3 logs:
 tensorboard
+
+
+for statistical testing:
+scipy

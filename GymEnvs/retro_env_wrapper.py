@@ -3,6 +3,7 @@ from gymnasium import spaces
 import numpy as np
 import cv2
 import retro
+import retrowrapper
 import copy
 
 STICKY_TIME_STEPS = 4
@@ -22,6 +23,27 @@ NO_CHANGE = "No Change"
 
 TRAINING_LEVELS = ["Level1-1", "Level2-1", "Level4-1", "Level5-1", "Level6-1", "Level8-1"]
 TEST_LEVELS = ["Level3-1", "Level7-1"]
+
+
+# class CustomRetroEnv(retro.RetroEnv):
+#     def __getstate__(self):
+#         state = self.__dict__.copy()
+#         del state['em']  # Remove the emulator instance since it can't be pickled
+#         return state
+
+#     def __setstate__(self, state):
+#         self.__dict__.update(state)
+#         self.em = retro.RetroEmulator(self.rom_path)  # Recreate the emulator instance
+
+# def make_env(game, state, record_option=None):
+#     def _init():
+#         if record_option is not None:
+#             env = CustomRetroEnv(game=game, state=state, record=record_option)
+#         else:
+#             env = CustomRetroEnv(game=game, state=state)
+#         return env
+#     return _init
+
 
 class MarioEnv(gym.Env):
     def __init__(self):
@@ -58,6 +80,15 @@ class MarioEnv(gym.Env):
         # Example: observation space with continuous values between 0 and 1
         self.observation_space = gym.spaces.Box(low=0, high=255, shape=(84, 84, 1), dtype=np.uint8) # greyscale 84x84??
 
+    # def __getstate__(self):
+    #     state = self.__dict__.copy()
+    #     del state['em']  # Remove the emulator instance since it can't be pickled
+    #     return state
+
+    # def __setstate__(self, state):
+    #     self.__dict__.update(state)
+    #     self.em = retro.RetroEmulator(self.rom_path)  # Recreate the emulator instance
+
     def change_mode(self):
         if self._use_training_levels:
             self.levels_to_use = TRAINING_LEVELS
@@ -93,9 +124,11 @@ class MarioEnv(gym.Env):
         # print(f"New level: {self.level}")
 
         if self.record_option:
-            self.retro_env = retro.make(game=GAME_NAME, state=self.level, record=self.record_option)
+            self.retro_env = retrowrapper.RetroWrapper(game=GAME_NAME, state=self.level, record=self.record_option)
+            # self.retro_env = retro.make(game=GAME_NAME, state=self.level, record=self.record_option)
         else:
-            self.retro_env = retro.make(game=GAME_NAME, state=self.level)
+            self.retro_env = retrowrapper.RetroWrapper(game=GAME_NAME, state=self.level)
+            # self.retro_env = retro.make(game=GAME_NAME, state=self.level)
 
         obs = self.retro_env.reset()
 
@@ -116,6 +149,8 @@ class MarioEnv(gym.Env):
         obs = cv2.resize(obs, (84, 84), interpolation=cv2.INTER_AREA)
         # Add a channel dimension
         obs = np.expand_dims(obs, axis=-1)
+
+        # obs = np.transpose(obs, (0, 3, 1, 2))
         return obs
 
     def reset(self, seed=None, options=None):
