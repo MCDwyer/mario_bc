@@ -10,7 +10,7 @@ from scipy.stats import mannwhitneyu, shapiro, levene, ttest_ind, ttest_rel, wil
 import pickle
 
 TIMESTEP_INCREMENT = 1000000
-TIMESTEPS = 1000000
+TIMESTEPS = 3000000
 UNSUPERVISED = False
 RETRAINING = False
 MODEL_NAME = "PPO"
@@ -163,24 +163,25 @@ def load_model_get_results(dir_path, string_timesteps, env, level_results, resul
         
     return level_results, results, episode_trajectories
 
-def combine_level_data(results, agent_name):
+def combine_level_data(results, agent_name, levels=ALL_LEVELS):
     all_means = None
     all_data = None
 
     for level in results:
-        if all_means is None:
-            all_means = np.array(results[level][agent_name]["means"])
-        else:
-            all_means = np.vstack((all_means, np.array(results[level][agent_name]["means"])))
+        if level in levels:
+            if all_means is None:
+                all_means = np.array(results[level][agent_name]["means"])
+            else:
+                all_means = np.vstack((all_means, np.array(results[level][agent_name]["means"])))
 
-        if all_data is None:
-            all_data = np.array(results[level][agent_name]["all rewards"])
-        else:
-            all_data = np.vstack((all_data, np.array(results[level][agent_name]["all rewards"])))
+            if all_data is None:
+                all_data = np.array(results[level][agent_name]["all rewards"])
+            else:
+                all_data = np.vstack((all_data, np.array(results[level][agent_name]["all rewards"])))
 
     return all_means, all_data
 
-def main(agent_index):
+def main():
 
     register(
             id='MarioEnv-v0',
@@ -217,15 +218,15 @@ def main(agent_index):
 
             means_list = results_dict[level][agent_name]["means"]
 
-            trajectories[agent_name_1] = {}
+            trajectories[agent_name] = {}
 
             results = None
 
             for agent_index in AGENT_INDICES:
-                trajectories[agent_name_1][agent_index] = {}
+                trajectories[agent_name][agent_index] = {}
                 means_list, results, trajectories = load_model_get_results(dir_paths[agent_name], string_timesteps, env, means_list, results, agent_index, level)
                 
-                trajectories[agent_name_1][agent_index][level] = trajectories
+                trajectories[agent_name][agent_index][level] = trajectories
 
             results_dict[level][agent_name]["all rewards"] = results
         
@@ -236,12 +237,23 @@ def main(agent_index):
         pickle.dump(results_dict, handle)
 
     combined_results = {}
+    combined_results_training = {}
+    combined_results_test = {}
+
+    training_levels = ["Level1-1", "Level2-1", "Level4-1", "Level5-1", "Level6-1", "Level8-1"]
+    test_levels = ["Level3-1", "Level7-1"]
 
     # run statistical tests on two agents
     for i, agent_name_1 in enumerate(dir_paths):
         for j, agent_name_2, in enumerate(dir_paths):        
             combined_results[agent_name_2] = {}
             combined_results[agent_name_2]["means"], combined_results[agent_name_2]["all rewards"] = combine_level_data(results, agent_name_2)
+
+            combined_results_training[agent_name_2] = {}
+            combined_results_training[agent_name_2]["means"], combined_results_training[agent_name_2]["all rewards"] = combine_level_data(results, agent_name_2, training_levels)
+
+            combined_results_test[agent_name_2] = {}
+            combined_results_test[agent_name_2]["means"], combined_results_test[agent_name_2]["all rewards"] = combine_level_data(results, agent_name_2, test_levels)
 
             if i == j:
                 # skip as same agent
@@ -340,9 +352,4 @@ def main(agent_index):
 
 
 if __name__ == "__main__":
-    if len(sys.argv) != 2:
-        print("Usage: python unsupervised_training.py <index_number>")
-        sys.exit(1)
-
-    agent_index = sys.argv[1]
-    main(agent_index)
+    main()
