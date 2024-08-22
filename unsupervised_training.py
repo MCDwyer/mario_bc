@@ -38,7 +38,7 @@ def ppo_model(env, log_dir):
     if UNSUPERVISED:
         # params = {'batch_size': 64, 'learning_rate': 0.0007849898563453707, 'n_steps': 3888, 'gamma': 0.9000390774580328, 'gae_lambda': 0.9432482269094022, 'ent_coef': 0.007674274866655088, 'clip_range': 0.20957139270537004, 'vf_coef': 0.5599428338540635}
         # params = {'batch_size': 1024, 'learning_rate': 0.0002771309599540991, 'n_steps': 2038, 'gamma': 0.9592756315428865, 'gae_lambda': 0.9917269088908877, 'ent_coef': 0.00025627959856235657, 'clip_range': 0.3932932134097107, 'vf_coef': 0.9279775875673197}
-        params = {'rl_learning_rate': 0.00014673143355102572, 'n_steps': 1394, 'gamma': 0.9870142096227642, 'gae_lambda': 0.8578802419856366, 'ent_coef': 0.002662143533237136, 'clip_range': 0.20484961973298704, 'vf_coef': 0.7286119263909786}
+        params = {'rl_learning_rate': 0.0004256977228617011, 'n_steps': 3588, 'gamma': 0.9244431355829242, 'gae_lambda': 0.901757161292598, 'ent_coef': 0.007033089897296567, 'clip_range': 0.31361009245800875, 'vf_coef': 0.824772120758773}
     else:
         params = {'learning_rate': 0.00029134888279670187, 'n_epochs': 20, 'batch_size': 64, 'rl_learning_rate': 0.000713429464146909, 'n_steps': 4644, 'gamma': 0.9321913724357199, 'gae_lambda': 0.9361069398526611, 'ent_coef': 0.000897540257562607, 'clip_range': 0.3627739264618809, 'vf_coef': 0.2629711126929802}
 
