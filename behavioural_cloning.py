@@ -7,7 +7,7 @@ import pickle
 # from imitation.data import rollout
 # from imitation.algorithms import bc
 
-# from custom_cnn_policy import train_cnn
+from custom_cnn_policy import train_cnn
 
 
 NUM_EPOCHS = 10

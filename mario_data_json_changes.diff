@@ -63,10 +63,14 @@ index bdfc121..87a899d 100644
 +      "address": 211,
 +      "type": "|u1"
 +    },
-+    "test":{
-+      "address": 1886,
++    "level":{
++      "address": 1888,
 +      "type": "|u1"
-     }
++    },
++    "player_state":{
++      "address": 14,
++      "type": "|u1"
+    }
    }
 -}
 +}

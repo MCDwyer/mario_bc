@@ -172,13 +172,17 @@ class MarioEnv(gym.Env):
 
         return self.state, {}
     
-    def horizontal_reward(self, info):
+    def horizontal_reward(self, info, state_change):
 
         current_horizontal_position = info["x_frame"]*256 + info["x_position_in_frame"]
         
         reward = current_horizontal_position - self.horizontal_position
         
         self.horizontal_position = current_horizontal_position
+
+        # player_state == 11 is dying, 5 is level change type bits, 8 is normal play?
+        if state_change:
+            return 0 #???           
         
         return reward
 
@@ -208,10 +212,20 @@ class MarioEnv(gym.Env):
             if done:
                 break
 
+        state_change = False
+
+        while info["player_state"] != 8:
+            # step through the non playable state times?
+            obs, rewards, done, info = self.retro_env.step(retro_action)
+
+            if info["player_state"] != 11:
+                state_change = True
+
+
         self.timesteps += 1
         self.state = self.process_observation(obs)
 
-        reward = self.horizontal_reward(info)
+        reward = self.horizontal_reward(info, state_change)
         self.episode_cumulative_reward += reward
 
         if info["lives"] != 2: # reset on lives changing to match human demo collection methods
