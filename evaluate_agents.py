@@ -8,6 +8,7 @@ import sys
 from scipy.stats import mannwhitneyu, shapiro, levene, ttest_ind, ttest_rel, wilcoxon, kruskal, f_oneway
 # from statsmodels.stats.multicomp import pairwise_tukeyhsd
 import pickle
+import copy
 
 TIMESTEP_INCREMENT = 1000000
 TIMESTEPS = 3000000
@@ -53,7 +54,8 @@ def evaluate_model(model, env, level, n_episodes=10):
 
             x = info["x_frame"]*256 + info["x_position_in_frame"]
             y = ((info["y_frame"]*256) + info["y_position_in_frame"])
-            trajectory.append([x, y])
+            trajectory.append(copy.deepcopy(info))
+            # trajectory.append([x, y])
 
             total_reward += reward
         episode_rewards.append(total_reward)
@@ -224,9 +226,9 @@ def main():
 
             for agent_index in AGENT_INDICES:
                 trajectories[agent_name][agent_index] = {}
-                means_list, results, trajectories = load_model_get_results(dir_paths[agent_name], string_timesteps, env, means_list, results, agent_index, level)
+                means_list, results, trajs = load_model_get_results(dir_paths[agent_name], string_timesteps, env, means_list, results, agent_index, level)
                 
-                trajectories[agent_name][agent_index][level] = trajectories
+                trajectories[agent_name][agent_index][level] = trajs
 
             results_dict[level][agent_name]["all rewards"] = results
         
@@ -284,6 +286,26 @@ def main():
             print()
             print()
 
+            print("Tests on training levels combined:")
+            print("Tests on the mean rewards:")
+            two_agent_statistical_tests(combined_results_training[agent_name_1]["means"], combined_results_training[agent_name_2]["means"])
+            print()
+
+            print("Tests on all the rewards:")
+            two_agent_statistical_tests(combined_results_training[agent_name_1]["all rewards"], combined_results_training[agent_name_2]["all rewards"])
+            print()
+            print()
+
+            print("Tests on test levels combined:")
+            print("Tests on the mean rewards:")
+            two_agent_statistical_tests(combined_results_test[agent_name_1]["means"], combined_results_test[agent_name_2]["means"])
+            print()
+
+            print("Tests on all the rewards:")
+            two_agent_statistical_tests(combined_results_test[agent_name_1]["all rewards"], combined_results_test[agent_name_2]["all rewards"])
+            print()
+            print()
+
     # more than two agent tests
     if len(dir_paths) > 2:
         
@@ -306,6 +328,26 @@ def main():
 
         print("Tests on all the rewards:")
         four_agent_statistical_tests(combined_results["unsupervised"]["all rewards"], combined_results["supervised - amalgam"]["all rewards"], combined_results["supervised - expert"]["all rewards"], combined_results["supervised - nonexpert"]["all rewards"], mean_rewards=False)
+        print()
+        print()
+        
+        print("Tests on training levels combined:")
+        print("Tests on the mean rewards:")
+        four_agent_statistical_tests(combined_results_training["unsupervised"]["means"], combined_results_training["supervised - amalgam"]["means"], combined_results_training["supervised - expert"]["means"], combined_results_training["supervised - nonexpert"]["means"])
+        print()
+
+        print("Tests on all the rewards:")
+        four_agent_statistical_tests(combined_results_training["unsupervised"]["all rewards"], combined_results_training["supervised - amalgam"]["all rewards"], combined_results_training["supervised - expert"]["all rewards"], combined_results_training["supervised - nonexpert"]["all rewards"], mean_rewards=False)
+        print()
+        print()
+
+        print("Tests on test levels combined:")
+        print("Tests on the mean rewards:")
+        four_agent_statistical_tests(combined_results_test["unsupervised"]["means"], combined_results_test["supervised - amalgam"]["means"], combined_results_test["supervised - expert"]["means"], combined_results_test["supervised - nonexpert"]["means"])
+        print()
+
+        print("Tests on all the rewards:")
+        four_agent_statistical_tests(combined_results_test["unsupervised"]["all rewards"], combined_results_test["supervised - amalgam"]["all rewards"], combined_results_test["supervised - expert"]["all rewards"], combined_results_test["supervised - nonexpert"]["all rewards"], mean_rewards=False)
         print()
         print()
 
