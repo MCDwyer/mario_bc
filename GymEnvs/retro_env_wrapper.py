@@ -25,24 +25,20 @@ TRAINING_LEVELS = ["Level1-1", "Level2-1", "Level4-1", "Level5-1", "Level6-1", "
 TEST_LEVELS = ["Level3-1", "Level7-1"]
 
 
-# class CustomRetroEnv(retro.RetroEnv):
-#     def __getstate__(self):
-#         state = self.__dict__.copy()
-#         del state['em']  # Remove the emulator instance since it can't be pickled
-#         return state
+# class DiscreteToBoxWrapper(gym.ActionWrapper):
+#     def __init__(self, env, continuous_actions):
+#         super(DiscreteToBoxWrapper, self).__init__(env)
+#         self.continuous_actions = continuous_actions
+#         self.action_space = spaces.Box(low=-1.0, high=1.0, shape=(1,), dtype=np.float32)
 
-#     def __setstate__(self, state):
-#         self.__dict__.update(state)
-#         self.em = retro.RetroEmulator(self.rom_path)  # Recreate the emulator instance
+#     def action(self, action):
+#         # Convert the continuous action to a discrete action
+#         action_idx = np.argmin(np.abs(self.continuous_actions - action))
+#         return action_idx
 
-# def make_env(game, state, record_option=None):
-#     def _init():
-#         if record_option is not None:
-#             env = CustomRetroEnv(game=game, state=state, record=record_option)
-#         else:
-#             env = CustomRetroEnv(game=game, state=state)
-#         return env
-#     return _init
+#     def reverse_action(self, action):
+#         # Convert the discrete action back to the continuous space
+#         return np.array([self.continuous_actions[action]], dtype=np.float32)
 
 
 class MarioEnv(gym.Env):
