@@ -12,8 +12,8 @@ import sys
 import behavioural_cloning
 
 TIMESTEP_INCREMENT = 1000000
-TIMESTEPS = 3000000
-UNSUPERVISED = True
+TIMESTEPS = 5000000
+UNSUPERVISED = False
 RETRAINING = False
 MODEL_NAME = "PPO"
 MODEL_CLASS = PPO
@@ -36,16 +36,10 @@ TRAINING_FILEPATH += TRAINING_DATA_NAME + "_bc_data.obj"
 def ppo_model(env, log_dir):
 
     if UNSUPERVISED:
-        # params = {'batch_size': 64, 'learning_rate': 0.0007849898563453707, 'n_steps': 3888, 'gamma': 0.9000390774580328, 'gae_lambda': 0.9432482269094022, 'ent_coef': 0.007674274866655088, 'clip_range': 0.20957139270537004, 'vf_coef': 0.5599428338540635}
-        # params = {'batch_size': 1024, 'learning_rate': 0.0002771309599540991, 'n_steps': 2038, 'gamma': 0.9592756315428865, 'gae_lambda': 0.9917269088908877, 'ent_coef': 0.00025627959856235657, 'clip_range': 0.3932932134097107, 'vf_coef': 0.9279775875673197}
         params = {'rl_learning_rate': 0.0004256977228617011, 'n_steps': 3588, 'gamma': 0.9244431355829242, 'gae_lambda': 0.901757161292598, 'ent_coef': 0.007033089897296567, 'clip_range': 0.31361009245800875, 'vf_coef': 0.824772120758773}
     else:
-        params = {'learning_rate': 0.00029134888279670187, 'n_epochs': 20, 'batch_size': 64, 'rl_learning_rate': 0.000713429464146909, 'n_steps': 4644, 'gamma': 0.9321913724357199, 'gae_lambda': 0.9361069398526611, 'ent_coef': 0.000897540257562607, 'clip_range': 0.3627739264618809, 'vf_coef': 0.2629711126929802}
+        params = {'learning_rate': 0.0009422578032986744, 'n_epochs': 15, 'batch_size': 1043, 'rl_learning_rate': 0.00019810071043939884, 'n_steps': 608, 'gamma': 0.9632436461255943, 'gae_lambda': 0.8365664231014514, 'ent_coef': 0.0014620665698483156, 'clip_range': 0.2873084366251664, 'vf_coef': 0.20790175758482327}
 
-    # policy_kwargs = dict(
-    #     features_extractor_class=CustomCNNExtractor,
-    #     features_extractor_kwargs=dict(trial=cnn_params),
-    # )
 
     model = PPO(POLICY,
                 env,
@@ -59,7 +53,6 @@ def ppo_model(env, log_dir):
                 vf_coef=params['vf_coef'],
                 verbose=1,
                 tensorboard_log=log_dir,
-                # policy_kwargs=policy_kwargs,
                 )
     
     return model, params
@@ -101,9 +94,9 @@ def main(agent_index):
             # model = MODEL_CLASS.load(bc_model_path, env, verbose=1, tensorboard_log=log_dir)
             # print(env.action_space)
             bc_model_path = f"{model_path}_bc"
-            model = behavioural_cloning.behavioural_cloning(model, TRAINING_FILEPATH, bc_model_path, params["cnn_learning_rate"], params[""])
+            model = behavioural_cloning.behavioural_cloning(model, TRAINING_FILEPATH, bc_model_path, params["learning_rate"], params["n_epochs"], params["batch_size"])
 
-    # print(model.policy)
+    print(model.policy)
 
     if UNSUPERVISED:
         name_prefix = f"unsupervised_{MODEL_NAME}_{string_timesteps}_{agent_index}"
@@ -119,7 +112,7 @@ def main(agent_index):
     eval_callback = EvalCallback(env, best_model_save_path=f"{log_dir}{name_prefix}/",
                                 log_path=log_dir, eval_freq=500,
                                 deterministic=True, render=False)
-    checkpoint_callback = CheckpointCallback(save_freq=100000, save_path=log_dir,
+    checkpoint_callback = CheckpointCallback(save_freq=250000, save_path=log_dir,
                                             name_prefix=name_prefix)
 
     # Train the model
