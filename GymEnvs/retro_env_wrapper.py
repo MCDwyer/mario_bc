@@ -111,7 +111,7 @@ class MarioEnv(gym.Env):
 
         return self.level
 
-    def initialise_retro_env(self, fixed_level=None):
+    def initialise_retro_env(self, fixed_level=None, record_option=None):
         if self.retro_env is not None:
             self.retro_env.close()
 
@@ -119,9 +119,9 @@ class MarioEnv(gym.Env):
 
         # print(f"New level: {self.level}")
 
-        if self.record_option:
+        if record_option:
             # self.retro_env = retrowrapper.RetroWrapper(game=GAME_NAME, state=self.level, record=self.record_option)
-            self.retro_env = retro.make(game=GAME_NAME, state=self.level, record=self.record_option)
+            self.retro_env = retro.make(game=GAME_NAME, state=self.level, record=record_option)
         else:
             # self.retro_env = retrowrapper.RetroWrapper(game=GAME_NAME, state=self.level)
             self.retro_env = retro.make(game=GAME_NAME, state=self.level)
@@ -152,12 +152,15 @@ class MarioEnv(gym.Env):
     def reset(self, seed=None, options=None):
 
         level = None
+        record_option = None
 
         if options is not None:
             if "level" in options:
                 level = options["level"]
+            if "record_option" in options:
+                record_option = options["record_option"]
 
-        self.retro_env, obs = self.initialise_retro_env(level)
+        self.retro_env, obs = self.initialise_retro_env(level, record_option)
 
         # obs = self.retro_env.reset()
 

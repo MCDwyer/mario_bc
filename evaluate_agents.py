@@ -8,10 +8,10 @@ import sys
 from scipy.stats import mannwhitneyu, shapiro, levene, ttest_ind, ttest_rel, wilcoxon, kruskal, f_oneway
 # from statsmodels.stats.multicomp import pairwise_tukeyhsd
 import pickle
-import copy
+import os
 
 TIMESTEP_INCREMENT = 1000000
-TIMESTEPS = 3000000
+TIMESTEPS = 5000000
 UNSUPERVISED = False
 RETRAINING = False
 MODEL_NAME = "PPO"
@@ -36,34 +36,40 @@ ALL_LEVELS = ["Level1-1", "Level2-1", "Level3-1", "Level4-1", "Level5-1", "Level
 TEST_EPISODES = 1000
 AGENT_INDICES = list(range(5))
 
-def evaluate_model(model, env, level, n_episodes=10):
+def evaluate_model(model, env, level, record_path, n_episodes=10):
     """
     Evaluates the model by running it in the environment for n_episodes.
     Returns the mean reward over these episodes.
     """
     episode_rewards = []
     episode_trajectories = []
-    for _ in range(n_episodes):
-        obs, _ = env.reset(options={"level": level})
+    episode_info = []
+ 
+    for i in range(n_episodes):
+        obs, _ = env.reset(options={"level": level, "record_option": record_path})
         done = False
         total_reward = 0.0
         trajectory = []
+        scores = []
         while not done:
             action, _states = model.predict(obs)
             obs, reward, done, _, info = env.step(int(action))
 
             x = info["x_frame"]*256 + info["x_position_in_frame"]
             y = ((info["y_frame"]*256) + info["y_position_in_frame"])
-            trajectory.append(copy.deepcopy(info))
-            # trajectory.append([x, y])
+            trajectory.append([x, y])
+            scores.append(info["score"])
 
             total_reward += reward
+
+        print(f"Episode {i} reward: {total_reward}")
         episode_rewards.append(total_reward)
         episode_trajectories.append(np.array(trajectory))
+        episode_info.append({'score': np.max(np.array(scores)), 'max_dist': np.max(np.array(trajectory)[:, 0]), 'num_timesteps': len(trajectory)})
 
     mean_reward = sum(episode_rewards) / n_episodes
 
-    return mean_reward, episode_rewards, episode_trajectories
+    return mean_reward, episode_rewards, episode_trajectories, episode_info
 
 def get_results(model, env):
     mean_rewards = {}
@@ -73,7 +79,7 @@ def get_results(model, env):
     for level in ALL_LEVELS:
         env.level = level
 
-        mean_reward, rewards, episode_trajectories = evaluate_model(model, env, level, TEST_EPISODES)
+        mean_reward, rewards, episode_trajectories, episode_info = evaluate_model(model, env, level, ".", TEST_EPISODES)
 
         trajectories[level] = episode_trajectories
         mean_rewards[level] = mean_reward
@@ -149,12 +155,12 @@ def four_agent_statistical_tests(agent_1, agent_2, agent_3, agent_4, mean_reward
     print()
     print()
 
-def load_model_get_results(dir_path, string_timesteps, env, level_results, results, agent_index, level):
+def load_model_get_results(dir_path, string_timesteps, env, level_results, results, agent_index, level, record_path):
     model_path = dir_path + f"{string_timesteps}_{MODEL_NAME}_{agent_index}"
 
     model = MODEL_CLASS.load(model_path, env, verbose=1)
 
-    mean_reward, rewards, episode_trajectories = evaluate_model(model, env, level, TEST_EPISODES)
+    mean_reward, rewards, episode_trajectories, episode_info = evaluate_model(model, env, level, record_path, TEST_EPISODES)
 
     level_results.append(mean_reward)
 
@@ -163,7 +169,7 @@ def load_model_get_results(dir_path, string_timesteps, env, level_results, resul
     else:
         results = np.vstack((results, np.array(rewards)))
         
-    return level_results, results, episode_trajectories
+    return level_results, results, episode_trajectories, episode_info
 
 def combine_level_data(results, agent_name, levels=ALL_LEVELS):
     all_means = None
@@ -207,7 +213,10 @@ def main():
                  "supervised - expert": f"{log_dir}supervised/expert_distance/", 
                  "supervised - nonexpert": f"{log_dir}supervised/nonexpert_distance/"}
 
+    dir_paths = {"supervised - amalgam": f"{log_dir}supervised/amalgam/"}
+
     trajectories = {}
+    info = {}
 
     for level in ALL_LEVELS:
         env.level = level
@@ -221,19 +230,28 @@ def main():
             means_list = results_dict[level][agent_name]["means"]
 
             trajectories[agent_name] = {}
+            info[agent_name] = {}
 
             results = None
 
             for agent_index in AGENT_INDICES:
+                record_path = f"test_bk2s/{level}/{agent_name}/{agent_index}/"
+                os.makedirs(record_path, exist_ok=True)
+                record_path += "."
                 trajectories[agent_name][agent_index] = {}
-                means_list, results, trajs = load_model_get_results(dir_paths[agent_name], string_timesteps, env, means_list, results, agent_index, level)
+                means_list, results, trajectories, ep_info = load_model_get_results(dir_paths[agent_name], string_timesteps, env, means_list, results, agent_index, level, record_path)
                 
-                trajectories[agent_name][agent_index][level] = trajs
+                trajectories[agent_name][agent_index][level] = trajectories
+                info[agent_name][agent_index] = {}
+                info[agent_name][agent_index][level] = ep_info
 
             results_dict[level][agent_name]["all rewards"] = results
         
     with open('evaluations/trajectories.obj', 'wb') as handle:
         pickle.dump(trajectories, handle)
+
+    with open('evaluations/infos.obj', 'wb') as handle:
+        pickle.dump(info, handle)
 
     with open('evaluations/results.obj', 'wb') as handle:
         pickle.dump(results_dict, handle)
