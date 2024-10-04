@@ -2,78 +2,179 @@ import torch
 import torch.nn as nn
 import numpy as np
 import pickle
-
-# from imitation.data.types import Trajectory, Transitions
-# from imitation.data import rollout
-# from imitation.algorithms import bc
-
-from custom_cnn_policy import train_cnn
+# from skimage.metrics import structural_similarity as ssim
 
 
-NUM_EPOCHS = 10
-BATCH_SIZE = 64
-LEARNING_RATE = 1e-3
+def pretrain_ppo_with_bc(model, actions, observations, lr=1e-4, num_epochs=100, batch_size=32, device='cpu'):
+    model.policy.train()  # Switch to training mode
+    optimizer = torch.optim.Adam(model.policy.parameters(), lr=lr)
 
-# def behavioural_cloning_with_imitation(env, model_path, training_filepath):
+    loss_fn = nn.CrossEntropyLoss()
 
-#     # load in data
-#     with open(training_filepath, 'rb') as file:
-#         trajectories = pickle.load(file)
+    # Expert data should not require gradients
+    expert_actions = torch.tensor(actions, dtype=torch.float32).to(device)
+    expert_observations = torch.tensor(observations, dtype=torch.float32).to(device)
 
-#     trajectories = np.array(trajectories)
+    dataset_size = len(observations)
 
-#     infos = [{} for _ in range(len(trajectories))]  # Empty dicts, assuming no additional info is available
+    for epoch in range(num_epochs):
+        # Shuffle data at the start of each epoch
+        permutation = np.random.permutation(len(expert_observations)) 
+        expert_obs = expert_observations[permutation]
+        expert_acts = expert_actions[permutation]
 
-#     observations = trajectories[:, 0]
-#     actions = trajectories[:, 1]
-#     done = np.array(trajectories[:, 2], dtype=bool)
-#     next_observations = trajectories[:, 3]
+        epoch_loss = 0.0
+        num_batches = int(np.ceil(dataset_size / batch_size))
 
-#     # Convert expert data into Trajectories or Transitions
-#     transitions = Transitions(obs=observations, acts=actions, infos=infos, next_obs=next_observations, dones=done)
+        # Mini-batch training
+        for i in range(num_batches):
+            batch_indices = np.random.choice(dataset_size, batch_size)
+            obs_batch = expert_obs[batch_indices]
+            action_batch = expert_acts[batch_indices]
 
-#     # Initialize the BC algorithm
-#     bc_trainer = bc.BC(
-#         expert_data=transitions,
-#         # policy_class=MODEL_CLASS,  # The policy class to be used
-#         # policy_kwargs=dict(policy=POLICY),  # Optional: modify network architecture
-#         # env=env,
-#         observation_space=env.observation_space,
-#         action_space=env.action_space,
-#     )
+            optimizer.zero_grad()
 
-#     # Train the model using behavior cloning
-#     bc_trainer.train(n_epochs=NUM_EPOCHS)
+            # Forward pass: predict actions from observations
+            predicted_actions, _, _ = model.policy(obs_batch)
+            predicted_actions = torch.tensor(predicted_actions, dtype=torch.float32, requires_grad=True).to(device)
+            predicted_actions = predicted_actions.squeeze()
 
-#     bc_model_path = f"{model_path}_bc"
+            # Compute behavior cloning loss
+            loss = loss_fn(predicted_actions, action_batch)
+            loss.backward()  # Backpropagation to compute gradients
+            optimizer.step()  # Update model parameters
 
-#     # Save the trained model
-#     bc_trainer.policy.save(bc_model_path)
+            epoch_loss += loss.item()
 
-#     return bc_trainer, bc_model_path
+        print(f"Epoch [{epoch+1}/{num_epochs}], Loss: {epoch_loss/num_batches:.4f}")
 
-# def preprocess_observations(observations):
-#     # Normalize observations (e.g., images with values between 0 and 255)
-#     observations = observations / 255.0
+    return model
 
-#     # Ensure the shape is in the format (batch_size, channels, height, width)
-#     if len(observations.shape) == 3:
-#         observations = np.expand_dims(observations, axis=0)  # Add batch dimension
-#     if observations.shape[1] != 3:  # Assuming color images
-#         observations = np.transpose(observations, (0, 3, 1, 2))  # Convert from HWC to CHW
+def pretrain_dqn_with_bc(model, actions, observations, lr=1e-4, num_epochs=100, batch_size=32, device='cpu'):
+    model.policy.train()  # Switch to training mode
+    optimizer = torch.optim.Adam(model.policy.parameters(), lr=lr)
 
-#     return observations
+    loss_fn = nn.CrossEntropyLoss()
 
+    # Expert data should not require gradients
+    expert_actions = torch.tensor(actions, dtype=torch.float32).to(device)
+    expert_observations = torch.tensor(observations, dtype=torch.float32).to(device)
 
-def load_data(filepath):
+    dataset_size = len(observations)
+
+    for epoch in range(num_epochs):
+        # Shuffle data at the start of each epoch
+        permutation = np.random.permutation(len(expert_observations)) 
+        expert_obs = expert_observations[permutation]
+        expert_acts = expert_actions[permutation]
+
+        epoch_loss = 0.0
+        num_batches = int(np.ceil(dataset_size / batch_size))
+
+        # Mini-batch training
+        for i in range(num_batches):
+            batch_indices = np.random.choice(dataset_size, batch_size)
+            obs_batch = expert_obs[batch_indices]
+            action_batch = expert_acts[batch_indices]
+
+            optimizer.zero_grad()
+
+            # Forward pass: predict actions from observations
+            predicted_actions = model.policy(obs_batch)
+            predicted_actions = torch.tensor(predicted_actions, dtype=torch.float32, requires_grad=True).to(device)
+            predicted_actions = predicted_actions.squeeze()
+
+            # Compute behavior cloning loss
+            loss = loss_fn(predicted_actions, action_batch)
+            loss.backward()  # Backpropagation to compute gradients
+            optimizer.step()  # Update model parameters
+
+            epoch_loss += loss.item()
+
+        print(f"Epoch [{epoch+1}/{num_epochs}], Loss: {epoch_loss/num_batches:.4f}")
+
+    return model
+
+def pretrain_sac_with_bc(model, actions, observations, lr=1e-4, num_epochs=100, batch_size=32, device='cpu'):
+    model.actor.train()  # Switch to training mode
+    optimizer = torch.optim.Adam(model.policy.parameters(), lr=lr)
+
+    loss_fn = nn.MSELoss()
+
+    # Expert data should not require gradients
+    expert_actions = torch.tensor(actions, dtype=torch.float32).to(device)
+    expert_observations = torch.tensor(observations, dtype=torch.float32).to(device)
+
+    dataset_size = len(observations)
+
+    for epoch in range(num_epochs):
+        # Shuffle data at the start of each epoch
+        permutation = np.random.permutation(len(expert_observations)) 
+        expert_obs = expert_observations[permutation]
+        expert_acts = expert_actions[permutation]
+
+        epoch_loss = 0.0
+        num_batches = int(np.ceil(dataset_size / batch_size))
+
+        # Mini-batch training
+        for i in range(num_batches):
+            batch_indices = np.random.choice(dataset_size, batch_size)
+            obs_batch = expert_obs[batch_indices]
+            action_batch = expert_acts[batch_indices]
+
+            optimizer.zero_grad()
+
+            # Forward pass: predict actions from observations
+            predicted_actions = model.actor(obs_batch)
+            predicted_actions = torch.tensor(predicted_actions, dtype=torch.float32, requires_grad=True).to(device)
+            predicted_actions = predicted_actions.squeeze()
+            
+            # Compute behavior cloning loss
+            loss = loss_fn(predicted_actions, action_batch)
+            loss.backward()  # Backpropagation to compute gradients
+            optimizer.step()  # Update model parameters
+
+            epoch_loss += loss.item()
+
+        print(f"Epoch [{epoch+1}/{num_epochs}], Loss: {epoch_loss/num_batches:.4f}")
+
+    return model
+
+def load_data(filepath, n_stack):
     # load in data
     with open(filepath, 'rb') as file:
         trajectories = pickle.load(file)
 
     trajectories = np.array(trajectories, dtype=object)
 
+    # [obs, act, done, next_obs]
+
+    observations = []
+
+    stacked_obs = []
+
+    # expert_observations = expert_observations.permute(0, 3, 1, 2)  # From [batch, height, width, channels] to [batch, channels, height, width]
+    
+    for i, trajectory in enumerate(trajectories):
+
+        stacked_obs.append(trajectory[0])
+
+        if len(stacked_obs) == n_stack:
+            # add stacked_obs to observations
+            stacked_obs_arr = np.array(stacked_obs)
+            stacked_obs_arr = stacked_obs_arr.reshape(n_stack, 84, 84)
+
+            observations.append(stacked_obs_arr)
+
+            if trajectory[2]:
+                # end of attempt
+                stacked_obs = []
+            else:
+                # remove first bit of stacked_obs
+                stacked_obs.pop(0)
+
     # for some reason have to do it this way, otherwise it gets upset
-    observations = [np.array(obs, dtype=np.float32) for obs in trajectories[:, 0]]
+    # observations = [np.array(obs, dtype=np.float32) for obs in trajectories[:, 0]]
     observations = np.array(observations)
     print(observations.shape)
     # observations = preprocess_observations(observations)
@@ -82,60 +183,120 @@ def load_data(filepath):
 
     return actions, observations
 
-def behavioural_cloning_training(model, actions, observations, lr, num_epochs, batch_size):
+# def behavioural_cloning_training(model, actions, observations, lr, num_epochs, batch_size):
 
-    # Convert observations and actions to tensors
-    expert_actions = torch.tensor(actions, dtype=torch.float32, requires_grad=True)
+#     # Convert observations and actions to tensors
+#     expert_actions = torch.tensor(actions, dtype=torch.float32, requires_grad=True)
 
-    expert_observations = torch.tensor(observations, dtype=torch.float32, requires_grad=True)
-    expert_observations = expert_observations.permute(0, 3, 1, 2)  # From [batch, height, width, channels] to [batch, channels, height, width]
-    expert_observations = expert_observations.float()
+#     expert_observations = torch.tensor(observations, dtype=torch.float32, requires_grad=True)
+#     expert_observations = expert_observations.permute(0, 3, 1, 2)  # From [batch, height, width, channels] to [batch, channels, height, width]
+#     expert_observations = expert_observations.float()
 
-    # Set model to training mode
-    model.policy.set_training_mode(True)
+#     # Set model to training mode
+#     model.policy.set_training_mode(True)
 
-    # Define an optimizer
-    optimizer = torch.optim.Adam(model.policy.parameters(), lr=lr)
+#     # Define an optimizer
+#     optimizer = torch.optim.Adam(model.policy.parameters(), lr=lr)
 
-    # Set loss function: Cross Entropy Loss for discrete action spaces
-    loss_fn = nn.CrossEntropyLoss()
+#     # Set loss function: Cross Entropy Loss for discrete action spaces
+#     loss_fn = nn.CrossEntropyLoss()
 
-    model = train_cnn(expert_observations, expert_actions, num_epochs, batch_size, model, loss_fn, optimizer)
+#     model = train_cnn(expert_observations, expert_actions, num_epochs, batch_size, model, loss_fn, optimizer)
 
-    # for epoch in range(num_epochs):
-    #     # Shuffle data at the start of each epoch
-    #     permutation = np.random.permutation(len(expert_observations))
-    #     expert_observations = expert_observations[permutation]
-    #     expert_actions = expert_actions[permutation]
-        
-    #     for i in range(0, len(expert_observations), batch_size):
-    #         batch_obs = expert_observations[i:i + batch_size]
-    #         batch_actions = expert_actions[i:i + batch_size]
-
-    #         # Forward pass: compute predicted actions by passing observations to the policy
-    #         logits, _, _ = model.policy(batch_obs)
-
-    #         # Calculate loss
-    #         loss = loss_fn(logits.float(), batch_actions.float())
-
-    #         # Backward pass: compute gradient of the loss with respect to model parameters
-    #         optimizer.zero_grad()
-    #         loss.backward(retain_graph=True)
-
-    #         # Update model parameters
-    #         optimizer.step()
-
-    #     print(f"Epoch {epoch + 1}/{num_epochs} - Loss: {loss.item()}")
-
-    return model
+#     return model
 
 
-def behavioural_cloning(model, filepath, model_path, lr=1e-3, num_epochs=10, batch_size=64):
+def behavioural_cloning(model_name, model, filepath, model_path, lr=1e-4, num_epochs=100, batch_size=32, n_stack=1):
 
-    actions, observations = load_data(filepath)
+    actions, observations = load_data(filepath, n_stack)
 
-    model = behavioural_cloning_training(model, actions, observations, lr, num_epochs, batch_size)
+    if model_name == "PPO":
+        model = pretrain_ppo_with_bc(model, actions, observations, lr, num_epochs, batch_size)
+    elif model_name == "DQN":
+        model = pretrain_dqn_with_bc(model, actions, observations, lr, num_epochs, batch_size)
+    elif model_name == "SAC":
+        model = pretrain_sac_with_bc(model, actions, observations, lr, num_epochs, batch_size)
 
     model.save(model_path)
 
     return model
+
+
+# def idk(nonexpert_pair, expert_acts, all_expert_obs):
+
+#     nonexpert_act, nonexpert_obs = nonexpert_pair
+#     some_threshold = 0.8
+
+#     for i, expert_obs in enumerate(all_expert_obs):
+
+#         score, diff = ssim(nonexpert_obs, expert_obs, full=True, channel_axis=2)
+#         # compare two images by computing the Structural Similarity Index (SSIM)
+#         # gives a score between -1 and 1, where 1 indicates identical images.
+
+#         if score == 1 or score > some_threshold:
+#             # so the obs is similar to an expert obs
+#             is_similar = True
+#             # now we check if the action is the same
+#             # print("similar")
+#             expert_act = expert_acts[i]
+#             if expert_act == nonexpert_act:
+#                 # could also check if it's similar? i.e. like right w/o shift kinda thing??
+#                 return nonexpert_act, nonexpert_obs, 1
+#             else:
+#                 new_act = np.ones(13)
+#                 proportion = 1/(13 - 1)
+
+#                 new_act = new_act*proportion # set all other actions to be equally likely
+
+#                 # index = np.nonzero(nonexpert_act)
+#                 # set index of the nonexpert action to 0, as we don't want to do this action??
+#                 new_act[int(nonexpert_act)] = 0
+
+#                 return new_act, nonexpert_obs, 2
+
+#     # if is_similar:
+#     #     non_zero_indices = torch.nonzero(new_act)
+#     #     if len(non_zero_indices) != 0:
+#     #         proportion = 1/len(non_zero_indices)
+#     #     else:
+#     #         # lots of conflicting info from expert obs so we'll just say everything is equally likely??
+#     #         proportion = 1/len(new_act)
+#     #         new_act = torch.ones_like(new_act)
+
+#     #     nonexpert_act = new_act*proportion # set all other actions to be equally likely
+
+#     return nonexpert_act, nonexpert_obs, 0
+
+
+# def main():
+#     # load in the two trajectories datasets
+
+#     results = []
+
+#     nonexpert_acts, nonexpert_obs = load_data("/Users/mdwyer/Documents/Code/PhD_Mario_Work/mario_bc/user_data_processed_for_bc/nonexpert_distance_bc_data.obj")
+#     expert_acts, expert_obs = load_data("/Users/mdwyer/Documents/Code/PhD_Mario_Work/mario_bc/user_data_processed_for_bc/expert_distance_bc_data.obj")
+
+#     expert_acts = expert_acts[:10000]
+#     expert_obs = expert_obs[:10000]
+
+#     for i, obs in enumerate(nonexpert_obs[:10000]):
+#         # print(obs.shape)
+#         pair = (nonexpert_acts[i], obs)
+#         _, _, indicator = idk(pair, expert_acts, expert_obs)
+
+#         results.append(indicator)
+
+#     # Create an empty dictionary to store counts
+#     counts = {}
+
+#     # Iterate through the list and count occurrences
+#     for number in results:
+#         if number in counts:
+#             counts[number] += 1
+#         else:
+#             counts[number] = 1
+
+#     print(counts)
+
+# # if __name__=="__main__":
+#     # main()
