@@ -25,21 +25,63 @@ TRAINING_LEVELS = ["Level1-1", "Level2-1", "Level4-1", "Level5-1", "Level6-1", "
 TEST_LEVELS = ["Level3-1", "Level7-1"]
 
 
-# class DiscreteToBoxWrapper(gym.ActionWrapper):
-#     def __init__(self, env, continuous_actions):
-#         super(DiscreteToBoxWrapper, self).__init__(env)
-#         self.continuous_actions = continuous_actions
-#         self.action_space = spaces.Box(low=-1.0, high=1.0, shape=(1,), dtype=np.float32)
+class DiscreteToBoxWrapper(gym.ActionWrapper):
+    def __init__(self, env):
+        super(DiscreteToBoxWrapper, self).__init__(env)
+        self.continuous_actions = np.linspace(-1, 1, env.action_space.n)
+        self.action_space = spaces.Box(low=-1.0, high=1.0, shape=(1,), dtype=np.float32)
 
-#     def action(self, action):
-#         # Convert the continuous action to a discrete action
-#         action_idx = np.argmin(np.abs(self.continuous_actions - action))
-#         return action_idx
+    def action(self, action):
+        # Convert the continuous action to a discrete action
+        action_idx = np.argmin(np.abs(self.continuous_actions - action))
+        return action_idx
 
-#     def reverse_action(self, action):
-#         # Convert the discrete action back to the continuous space
-#         return np.array([self.continuous_actions[action]], dtype=np.float32)
+    def reverse_action(self, action):
+        # Convert the discrete action back to the continuous space
+        return np.array([self.continuous_actions[action]], dtype=np.float32)
 
+# def continuous_to_discrete(action, action_space):
+#     """
+#     Convert continuous action (from Box space) to a discrete action (for Discrete space).
+
+#     Parameters:
+#     - action (float or np.ndarray): The continuous action from the Box space (e.g., in [-1, 1]).
+#     - action_space (gym.spaces.Discrete): The original discrete action space (e.g., Discrete(12)).
+
+#     Returns:
+#     - int: The corresponding discrete action.
+#     """
+#     assert isinstance(action_space, spaces.Discrete), "Target action space must be Discrete."
+
+#     # Number of discrete actions
+#     num_discrete_actions = action_space.n
+
+#     # Scale the continuous action (assuming [-1, 1] range) to the range of discrete actions
+#     # E.g., [-1, 1] -> [0, num_discrete_actions - 1]
+#     discrete_action = int(np.clip((action + 1) / 2 * (num_discrete_actions - 1), 0, num_discrete_actions - 1))
+
+#     return discrete_action
+
+# def discrete_to_continuous(discrete_action, action_space):
+#     """
+#     Convert a discrete action to a corresponding continuous action in Box space.
+
+#     Parameters:
+#     - discrete_action (int): The discrete action (e.g., in [0, 11] for Discrete(12)).
+#     - action_space (gym.spaces.Box): The continuous action space (e.g., Box(-1, 1, (1,))).
+
+#     Returns:
+#     - float or np.ndarray: The corresponding continuous action.
+#     """
+#     assert isinstance(action_space, spaces.Box), "Target action space must be Box."
+    
+#     # Number of discrete actions (e.g., Discrete(12) means actions [0, 11])
+#     num_discrete_actions = action_space.shape[0]
+
+#     # Scale the discrete action [0, num_discrete_actions - 1] to the continuous range [-1, 1]
+#     continuous_action = (discrete_action / (num_discrete_actions - 1)) * 2 - 1
+
+#     return continuous_action
 
 class MarioEnv(gym.Env):
     def __init__(self):
@@ -95,6 +137,7 @@ class MarioEnv(gym.Env):
 
         if fixed_level is not None:
             self.level = fixed_level
+            return self.level
 
         if self.level_change_type == RANDOM:
             level_int = np.random.randint(len(self.levels_to_use))
@@ -115,6 +158,7 @@ class MarioEnv(gym.Env):
         if self.retro_env is not None:
             self.retro_env.close()
 
+        # level = self.change_level(fixed_level)
         self.level = self.change_level(fixed_level)
 
         # print(f"New level: {self.level}")

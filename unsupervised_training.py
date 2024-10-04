@@ -1,4 +1,4 @@
-from stable_baselines3 import PPO
+from stable_baselines3 import PPO, DQN, SAC
 import gymnasium as gym
 from gymnasium.envs.registration import register
 import numpy as np
@@ -8,23 +8,25 @@ from stable_baselines3.common.callbacks import EvalCallback, CheckpointCallback
 from stable_baselines3.common.logger import configure
 import json
 import sys
+from stable_baselines3.common.vec_env import DummyVecEnv, VecFrameStack
+from stable_baselines3.common.monitor import Monitor
 
 import behavioural_cloning
 
 TIMESTEP_INCREMENT = 1000000
-TIMESTEPS = 5000000
-UNSUPERVISED = False
+TIMESTEPS = 10000000
+# UNSUPERVISED = False
 RETRAINING = False
-MODEL_NAME = "PPO"
-MODEL_CLASS = PPO
+# MODEL_NAME = "PPO"
+# MODEL_CLASS = PPO
 POLICY = "CnnPolicy"
-TRAINING_DATA_NAME = "amalgam"
+# TRAINING_DATA_NAME = "amalgam"
 # TRAINING_DATA_NAME = "expert_distance"
 # TRAINING_DATA_NAME = "nonexpert_distance"
 LEVEL_CHANGE = "random"
 
-TRAINING_FILEPATH = "user_data_processed_for_bc/"
-TRAINING_FILEPATH += TRAINING_DATA_NAME + "_bc_data.obj"
+# TRAINING_FILEPATH = "user_data_processed_for_bc/"
+# TRAINING_FILEPATH += TRAINING_DATA_NAME + "_bc_data.obj"
 # LEVEL_CHANGE = "single_level_Level1-1"
 
 # training_data_name = "expert_score"
@@ -73,6 +75,12 @@ def main(agent_index):
 
     env = gym.make('MarioEnv-v0')
 
+    env = Monitor(env)
+    env = DummyVecEnv([lambda: env])
+
+    # Stack frames to allow temporal information to be captured
+    env = VecFrameStack(env, n_stack=1)
+
     string_timesteps = f"{int(TIMESTEPS/1000)}k"
 
     model_path = log_dir + f"{string_timesteps}_{MODEL_NAME}_{agent_index}"
@@ -83,20 +91,24 @@ def main(agent_index):
 
         model = MODEL_CLASS.load(previous_model_path, env, verbose=1, tensorboard_log=log_dir)
     else:
-        print(MODEL_CLASS)
-        if MODEL_CLASS == PPO:
-            model, params = ppo_model(env, log_dir)
+        # if MODEL_CLASS == PPO:
+        #     model, params = ppo_model(env, log_dir)
+        # else:
+        #     model, params = MODEL_CLASS(POLICY, env, verbose=1, tensorboard_log=log_dir)
+
+        if MODEL_NAME == "DQN":
+            model = MODEL_CLASS(POLICY, env, verbose=1, tensorboard_log=log_dir, buffer_size=450000)
         else:
-            model, params = MODEL_CLASS(POLICY, env, verbose=1, tensorboard_log=log_dir)
+            model = MODEL_CLASS(POLICY, env, verbose=1, tensorboard_log=log_dir)
 
         if not UNSUPERVISED:
             # bc_model, bc_model_path = behavioural_cloning.behavioural_cloning_with_imitation(env, model_path, TRAINING_FILEPATH)
             # model = MODEL_CLASS.load(bc_model_path, env, verbose=1, tensorboard_log=log_dir)
             # print(env.action_space)
             bc_model_path = f"{model_path}_bc"
-            model = behavioural_cloning.behavioural_cloning(model, TRAINING_FILEPATH, bc_model_path, params["learning_rate"], params["n_epochs"], params["batch_size"])
+            model = behavioural_cloning.behavioural_cloning(model, TRAINING_FILEPATH, bc_model_path) #, params["learning_rate"], params["n_epochs"], params["batch_size"])
 
-    print(model.policy)
+    # print(model.policy)
 
     if UNSUPERVISED:
         name_prefix = f"unsupervised_{MODEL_NAME}_{string_timesteps}_{agent_index}"
@@ -174,9 +186,29 @@ def main(agent_index):
 
 
 if __name__ == "__main__":
-    if len(sys.argv) != 2:
-        print("Usage: python unsupervised_training.py <index_number>")
+    if len(sys.argv) != 4:
+        print("Usage: python unsupervised_training.py <index_number> <training_data_name> <model>")
         sys.exit(1)
 
     agent_index = sys.argv[1]
+    TRAINING_DATA_NAME = sys.argv[2]
+    MODEL_NAME = sys.argv[3]
+
+    if TRAINING_DATA_NAME == 'None':
+        UNSUPERVISED = True
+    else:
+        UNSUPERVISED = False
+
+    TRAINING_FILEPATH = "user_data_processed_for_bc/"
+    TRAINING_FILEPATH += TRAINING_DATA_NAME + "_bc_data.obj"
+
+    if MODEL_NAME == "PPO":
+        MODEL_CLASS = PPO
+    elif MODEL_NAME == "DQN":
+        MODEL_CLASS = DQN
+    else:
+        MODEL_CLASS = SAC
+
+    print(f"Starting training for agent {agent_index} with model type: {MODEL_NAME} and using {TRAINING_DATA_NAME} training data.")
+
     main(agent_index)
