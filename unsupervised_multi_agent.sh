@@ -14,6 +14,6 @@ NUM_TIMES=$2
 # Loop to run the Python script multiple times
 for (( i=START_INDEX; i<(NUM_TIMES + START_INDEX); i++ ))
 do
-  nohup python -u unsupervised_training.py $i > nohup/unsupervised_training_${i}.out &
+  nohup python -u unsupervised_training.py $i None DQN > nohup/unsupervised_training_${i}.out &
   echo "Started unsupervised_training.py with start_index $i, output to nohup/unsupervised_training_${i}.out"
 done
