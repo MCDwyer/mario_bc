@@ -5,7 +5,7 @@ import pickle
 # from skimage.metrics import structural_similarity as ssim
 
 
-def pretrain_ppo_with_bc(model, actions, observations, lr=1e-4, num_epochs=100, batch_size=32, device='cpu'):
+def pretrain_ppo_with_bc(model, actions, observations, lr, num_epochs, batch_size, device='cpu'):
     model.policy.train()  # Switch to training mode
     optimizer = torch.optim.Adam(model.policy.parameters(), lr=lr)
 
@@ -50,7 +50,7 @@ def pretrain_ppo_with_bc(model, actions, observations, lr=1e-4, num_epochs=100, 
 
     return model
 
-def pretrain_dqn_with_bc(model, actions, observations, lr=1e-4, num_epochs=100, batch_size=32, device='cpu'):
+def pretrain_dqn_with_bc(model, actions, observations, lr, num_epochs, batch_size, device='cpu'):
     model.policy.train()  # Switch to training mode
     optimizer = torch.optim.Adam(model.policy.parameters(), lr=lr)
 
@@ -95,7 +95,7 @@ def pretrain_dqn_with_bc(model, actions, observations, lr=1e-4, num_epochs=100, 
 
     return model
 
-def pretrain_sac_with_bc(model, actions, observations, lr=1e-4, num_epochs=100, batch_size=32, device='cpu'):
+def pretrain_sac_with_bc(model, actions, observations, lr, num_epochs, batch_size, device='cpu'):
     model.actor.train()  # Switch to training mode
     optimizer = torch.optim.Adam(model.policy.parameters(), lr=lr)
 
@@ -206,17 +206,21 @@ def load_data(filepath, n_stack):
 #     return model
 
 
-def behavioural_cloning(model_name, model, filepath, model_path, lr=1e-4, num_epochs=100, batch_size=32, n_stack=1):
+def behavioural_cloning(model_name, model, filepath, model_path, lr=1e-3, num_epochs=50, batch_size=64, n_stack=1):
 
     actions, observations = load_data(filepath, n_stack)
 
     if model_name == "PPO":
+        print("PPO behaviour cloning starting")
         model = pretrain_ppo_with_bc(model, actions, observations, lr, num_epochs, batch_size)
     elif model_name == "DQN":
+        print("DQN behaviour cloning starting")
         model = pretrain_dqn_with_bc(model, actions, observations, lr, num_epochs, batch_size)
     elif model_name == "SAC":
+        print("SAC behaviour cloning starting")
         model = pretrain_sac_with_bc(model, actions, observations, lr, num_epochs, batch_size)
 
+    print(f"behaviour cloning finished, being saved to {model_path}")
     model.save(model_path)
 
     return model
