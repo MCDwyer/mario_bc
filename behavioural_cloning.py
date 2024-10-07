@@ -206,7 +206,7 @@ def load_data(filepath, n_stack):
 #     return model
 
 
-def behavioural_cloning(model_name, model, filepath, model_path, lr=1e-3, num_epochs=50, batch_size=64, n_stack=1):
+def behavioural_cloning(model_name, model, filepath, model_path, lr=1e-2, num_epochs=100, batch_size=64, n_stack=1):
 
     actions, observations = load_data(filepath, n_stack)
 
