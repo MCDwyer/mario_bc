@@ -26,6 +26,16 @@ def pretrain_ppo_with_bc(model, actions, observations, lr, num_epochs, batch_siz
         epoch_loss = 0.0
         num_batches = int(np.ceil(dataset_size / batch_size))
 
+
+    for epoch in range(num_epochs):
+        # Shuffle data at the start of each epoch
+        permutation = np.random.permutation(len(expert_observations))
+        expert_obs = expert_observations[permutation]
+        expert_acts = expert_actions[permutation]
+
+        epoch_loss = 0.0
+        num_batches = int(np.ceil(dataset_size / batch_size))
+
         # Mini-batch training
         for i in range(num_batches):
             batch_indices = np.random.choice(dataset_size, batch_size)
@@ -36,7 +46,8 @@ def pretrain_ppo_with_bc(model, actions, observations, lr, num_epochs, batch_siz
 
             # Forward pass: predict actions from observations
             predicted_actions, _, _ = model.policy(obs_batch)
-            predicted_actions = torch.tensor(predicted_actions, dtype=torch.float32, requires_grad=True).to(device)
+
+            # Squeeze predicted actions if necessary (depends on output shape)
             predicted_actions = predicted_actions.squeeze()
 
             # Compute behavior cloning loss
