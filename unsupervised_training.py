@@ -78,6 +78,13 @@ def test_ani(env, model, string_timesteps):
 
     env.close()
 
+def compare_params(dict1, dict2): 
+    for key in dict1.keys(): 
+        if not torch.equal(dict1[key], dict2[key]): 
+            return False 
+        
+    return True
+
 def ppo_model(env, log_dir):
 
     if UNSUPERVISED:
@@ -179,7 +186,7 @@ def main(agent_index):
             policy_params_after = bc_trained_model.policy.state_dict()
             
             # Compare specific weights (e.g., first layer weights)
-            if policy_params_before == policy_params_after:
+            if compare_params(policy_params_before, policy_params_after):
                 print("Weights have not changed.")
             else:
                 print("Weights have been updated!")
