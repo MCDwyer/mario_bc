@@ -44,16 +44,22 @@ def evaluate_model(model, env, level, record_path, n_episodes=10):
     episode_rewards = []
     episode_trajectories = []
     episode_info = []
- 
+    episode_actions = []
+    total_actions = np.zeros(env.action_space.n)
+
     for i in range(n_episodes):
         obs, _ = env.reset(options={"level": level, "record_option": record_path})
         done = False
         total_reward = 0.0
         trajectory = []
         scores = []
+        actions = np.zeros(env.action_space.n)
+
         while not done:
             action, _states = model.predict(obs)
             obs, reward, done, _, info = env.step(int(action))
+
+            actions[int(action)] += 1
 
             x = info["x_frame"]*256 + info["x_position_in_frame"]
             y = ((info["y_frame"]*256) + info["y_position_in_frame"])
@@ -66,10 +72,12 @@ def evaluate_model(model, env, level, record_path, n_episodes=10):
         episode_rewards.append(total_reward)
         episode_trajectories.append(np.array(trajectory))
         episode_info.append({'score': np.max(np.array(scores)), 'max_dist': np.max(np.array(trajectory)[:, 0]), 'num_timesteps': len(trajectory)})
+        episode_actions.append(actions)
+        total_actions += actions
 
     mean_reward = sum(episode_rewards) / n_episodes
 
-    return mean_reward, episode_rewards, episode_trajectories, episode_info
+    return mean_reward, episode_rewards, episode_trajectories, episode_info, episode_actions
 
 def get_results(model, env):
     mean_rewards = {}
@@ -205,6 +213,8 @@ def main():
     # env.set_record_option("test_bk2s/.")
 
     env.level_change_type = "No Change"
+
+    print(env.action_space)
 
     results_dict = {}
 

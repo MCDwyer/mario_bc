@@ -2,30 +2,73 @@ import torch
 import torch.nn as nn
 import numpy as np
 import pickle
+import copy
+from stable_baselines3.common.policies import ActorCriticCnnPolicy
+import gymnasium as gym
+
+from custom_cnn import CustomCnnPolicy
+
 # from skimage.metrics import structural_similarity as ssim
 
+# def loss_function(ent_weight, l2_weight):
+#         tensor_obs = types.map_maybe_dict(
+#             util.safe_to_tensor,
+#             types.maybe_unwrap_dictobs(obs),
+#         )
+#         acts = util.safe_to_tensor(acts)
 
-def pretrain_ppo_with_bc(model, actions, observations, lr, num_epochs, batch_size, device='cpu'):
-    model.policy.train()  # Switch to training mode
+#         # policy.evaluate_actions's type signatures are incorrect.
+#         # See https://github.com/DLR-RM/stable-baselines3/issues/1679
+#         (_, log_prob, entropy) = policy.evaluate_actions(
+#             tensor_obs,  # type: ignore[arg-type]
+#             acts,
+#         )
+#         prob_true_act = th.exp(log_prob).mean()
+#         log_prob = log_prob.mean()
+#         entropy = entropy.mean() if entropy is not None else None
+
+#         l2_norms = [th.sum(th.square(w)) for w in policy.parameters()]
+#         l2_norm = sum(l2_norms) / 2  # divide by 2 to cancel with gradient of square
+#         # sum of list defaults to float(0) if len == 0.
+#         assert isinstance(l2_norm, th.Tensor)
+
+#         ent_loss = -self.ent_weight * (entropy if entropy is not None else th.zeros(1))
+#         neglogp = -log_prob
+#         l2_loss = self.l2_weight * l2_norm
+#         loss = neglogp + ent_loss + l2_loss
+
+#         return BCTrainingMetrics(
+#             neglogp=neglogp,
+#             entropy=entropy,
+#             ent_loss=ent_loss,
+#             prob_true_act=prob_true_act,
+#             l2_norm=l2_norm,
+#             l2_loss=l2_loss,
+#             loss=loss,
+#         )
+
+def compare_params(dict1, dict2): 
+    for key in dict1.keys():
+        if not torch.equal(dict1[key], dict2[key]): 
+            return False 
+        
+    return True
+
+
+def pretrain_ppo_with_bc(model, env, actions, observations, lr, num_epochs, batch_size, device='cpu'):
+    # create a custom cnn policy to pretrain
+    policy = CustomCnnPolicy(env)
+
+    # Define optimizer and loss
     optimizer = torch.optim.Adam(model.policy.parameters(), lr=lr)
-
-    loss_fn = nn.CrossEntropyLoss()
+    criterion = nn.CrossEntropyLoss()  # Use MSELoss for continuous action spaces
 
     # Expert data should not require gradients
-    expert_actions = torch.tensor(actions, dtype=torch.float32).to(device)
+    expert_actions = torch.tensor(actions, dtype=torch.long).to(device)
+    # expert_actions = torch.tensor(actions, dtype=torch.long).to(device)
     expert_observations = torch.tensor(observations, dtype=torch.float32).to(device)
 
     dataset_size = len(observations)
-
-    for epoch in range(num_epochs):
-        # Shuffle data at the start of each epoch
-        permutation = np.random.permutation(len(expert_observations)) 
-        expert_obs = expert_observations[permutation]
-        expert_acts = expert_actions[permutation]
-
-        epoch_loss = 0.0
-        num_batches = int(np.ceil(dataset_size / batch_size))
-
 
     for epoch in range(num_epochs):
         # Shuffle data at the start of each epoch
@@ -44,20 +87,62 @@ def pretrain_ppo_with_bc(model, actions, observations, lr, num_epochs, batch_siz
 
             optimizer.zero_grad()
 
-            # Forward pass: predict actions from observations
-            predicted_actions, _, _ = model.policy(obs_batch)
+            # Forward pass
+            action_logits, _ = policy(obs_batch)  # Only use the policy head
+            loss = criterion(action_logits, action_batch)
 
-            # Squeeze predicted actions if necessary (depends on output shape)
-            predicted_actions = predicted_actions.squeeze()
-
-            # Compute behavior cloning loss
-            loss = loss_fn(predicted_actions, action_batch)
             loss.backward()  # Backpropagation to compute gradients
             optimizer.step()  # Update model parameters
 
             epoch_loss += loss.item()
 
         print(f"Epoch [{epoch+1}/{num_epochs}], Loss: {epoch_loss/num_batches:.4f}")
+
+    tmp_policy_dict = policy.state_dict()
+
+    # Create a mapping dictionary to rename keys
+    custom_weights = {
+        # CNN layers
+        'features_extractor.cnn.0.weight': tmp_policy_dict['features_extractor.conv1.weight'],
+        'features_extractor.cnn.0.bias': tmp_policy_dict['features_extractor.conv1.bias'],
+        'features_extractor.cnn.2.weight': tmp_policy_dict['features_extractor.conv2.weight'],
+        'features_extractor.cnn.2.bias': tmp_policy_dict['features_extractor.conv2.bias'],
+        'features_extractor.cnn.4.weight': tmp_policy_dict['features_extractor.conv3.weight'],
+        'features_extractor.cnn.4.bias': tmp_policy_dict['features_extractor.conv3.bias'],
+        
+        # Fully connected layer in feature extractor
+        'features_extractor.linear.0.weight': tmp_policy_dict['features_extractor.fc.weight'],
+        'features_extractor.linear.0.bias': tmp_policy_dict['features_extractor.fc.bias'],
+        
+        # Final policy and value heads
+        'action_net.weight': tmp_policy_dict['action_net.weight'],
+        'action_net.bias': tmp_policy_dict['action_net.bias'],
+        'value_net.weight': tmp_policy_dict['value_net.weight'],
+        'value_net.bias': tmp_policy_dict['value_net.bias']
+    }
+
+    print(compare_params(model.policy.state_dict(), custom_weights))
+
+    # model.policy = policy
+    policy_params_before = copy.deepcopy(model.policy.state_dict())
+
+    # Map custom model's weights to Stable Baselines3 model based on the correct names
+    model.policy.features_extractor.cnn[0].weight.data = tmp_policy_dict['features_extractor.conv1.weight']
+    model.policy.features_extractor.cnn[0].bias.data = tmp_policy_dict['features_extractor.conv1.bias']
+    model.policy.features_extractor.cnn[2].weight.data = tmp_policy_dict['features_extractor.conv2.weight']
+    model.policy.features_extractor.cnn[2].bias.data = tmp_policy_dict['features_extractor.conv2.bias']
+    model.policy.features_extractor.cnn[4].weight.data = tmp_policy_dict['features_extractor.conv3.weight']
+    model.policy.features_extractor.cnn[4].bias.data = tmp_policy_dict['features_extractor.conv3.bias']
+    model.policy.features_extractor.linear[0].weight.data = tmp_policy_dict['features_extractor.fc.weight']
+    model.policy.features_extractor.linear[0].bias.data = tmp_policy_dict['features_extractor.fc.bias']
+
+    # Final policy and value heads
+    model.policy.action_net.weight.data = tmp_policy_dict['action_net.weight']
+    model.policy.action_net.bias.data = tmp_policy_dict['action_net.bias']
+    model.policy.value_net.weight.data = tmp_policy_dict['value_net.weight']
+    model.policy.value_net.bias.data = tmp_policy_dict['value_net.bias']
+
+    print(compare_params(model.policy.state_dict(), policy_params_before))
 
     return model
 
@@ -217,13 +302,13 @@ def load_data(filepath, n_stack):
 #     return model
 
 
-def behavioural_cloning(model_name, model, filepath, model_path, lr=1e-2, num_epochs=100, batch_size=64, n_stack=1):
+def behavioural_cloning(model_name, model, env, filepath, model_path, lr=1e-3, num_epochs=5, batch_size=64, n_stack=1):
 
     actions, observations = load_data(filepath, n_stack)
 
     if model_name == "PPO":
         print("PPO behaviour cloning starting")
-        model = pretrain_ppo_with_bc(model, actions, observations, lr, num_epochs, batch_size)
+        model = pretrain_ppo_with_bc(model, env, actions, observations, lr, num_epochs, batch_size)
     elif model_name == "DQN":
         print("DQN behaviour cloning starting")
         model = pretrain_dqn_with_bc(model, actions, observations, lr, num_epochs, batch_size)

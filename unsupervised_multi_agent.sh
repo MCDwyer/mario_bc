@@ -15,8 +15,8 @@ MODEL_NAME=$3
 # Loop to run the Python script multiple times
 for (( i=START_INDEX; i<(NUM_TIMES + START_INDEX); i++ ))
 do
-  nohup python -u unsupervised_training.py $i None $MODEL_NAME > nohup/unsupervised_training_${MODEL_NAME}_${i}.out &
-  echo "Started unsupervised_training.py with start_index $i, output to nohup/unsupervised_training_${MODEL_NAME}_${i}.out"
+  # nohup python -u unsupervised_training.py $i None $MODEL_NAME > nohup/unsupervised_training_${MODEL_NAME}_${i}.out &
+  # echo "Started unsupervised_training.py with start_index $i, output to nohup/unsupervised_training_${MODEL_NAME}_${i}.out"
 
   # amalgam supervised
   nohup python -u unsupervised_training.py $i amalgam $MODEL_NAME > nohup/supervised_training_${MODEL_NAME}_amalgam_${i}.out &

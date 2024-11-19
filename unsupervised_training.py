@@ -13,6 +13,7 @@ import sys
 import torch
 
 import behavioural_cloning
+# from custom_cnn import CustomCnnPolicy
 
 TIMESTEP_INCREMENT = 1000000
 TIMESTEPS = 10000000
@@ -151,7 +152,7 @@ def main(agent_index):
         else:
             # model = MODEL_CLASS(POLICY, env, verbose=1, tensorboard_log=log_dir)
             params = {'learning_rate': 0.0009422578032986744, 'n_epochs': 15, 'batch_size': 1043, 'rl_learning_rate': 0.00019810071043939884, 'n_steps': 608, 'gamma': 0.9632436461255943, 'gae_lambda': 0.8365664231014514, 'ent_coef': 0.0014620665698483156, 'clip_range': 0.2873084366251664, 'vf_coef': 0.20790175758482327}
-
+# model = PPO(CustomCnnPolicy, env, verbose=1)
             model = PPO(POLICY,
                 env,
                 batch_size=params['n_steps'],
@@ -171,11 +172,13 @@ def main(agent_index):
             bc_model_path = f"{model_path}_bc"
             model.save(f"{bc_model_path}_initial_weights")
 
+            print(model.policy)
+
             # bc_model, bc_model_path = behavioural_cloning.behavioural_cloning_with_imitation(env, model_path, TRAINING_FILEPATH)
             # model = MODEL_CLASS.load(bc_model_path, env, verbose=1, tensorboard_log=log_dir)
             # print(env.action_space)
             print("behaviour cloning starting")
-            model = behavioural_cloning.behavioural_cloning(MODEL_NAME, model, TRAINING_FILEPATH, bc_model_path) #, params["learning_rate"], params["n_epochs"], params["batch_size"])
+            model = behavioural_cloning.behavioural_cloning(MODEL_NAME, model, env, TRAINING_FILEPATH, bc_model_path) #, params["learning_rate"], params["n_epochs"], params["batch_size"])
             
             initial_model = PPO.load(f"{bc_model_path}_initial_weights", env=env)
             bc_trained_model = PPO.load(bc_model_path, env=env)
