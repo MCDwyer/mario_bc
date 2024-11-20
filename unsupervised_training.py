@@ -67,10 +67,23 @@ class ActionDistributionEvalCallback(EvalCallback):
             done = False
             while not done:
                 action, _ = self.model.predict(obs, deterministic=False)
-                action = action.item()  # Convert to scalar for discrete actions
-                action_count[action] = action_count.get(action, 0) + 1
+                # action = np.array([action])  # Wrap action as a numpy array for compatibility
+                # action_scalar = action.item()  # Convert to scalar for logging distribution
+                action_count[int(action)] = action_count.get(int(action), 0) + 1
                 obs, _, done, _ = self.eval_env.step(action)
         return action_count
+    # def _track_action_distribution(self):
+    #     # Track action distribution over evaluation episodes
+    #     action_count = {}
+    #     for _ in range(self.n_eval_episodes):
+    #         obs = self.eval_env.reset()
+    #         done = False
+    #         while not done:
+    #             action, _ = self.model.predict(obs, deterministic=False)
+    #             action = action.item()  # Convert to scalar for discrete actions
+    #             action_count[action] = action_count.get(action, 0) + 1
+    #             obs, _, done, _ = self.eval_env.step(action)
+    #     return action_count
 
     def _log_action_distribution(self, action_distribution):
         # Log as scalars
