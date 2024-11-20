@@ -3,49 +3,8 @@ import torch.nn as nn
 import numpy as np
 import pickle
 import copy
-from stable_baselines3.common.policies import ActorCriticCnnPolicy
-import gymnasium as gym
 
 from custom_cnn import CustomCnnPolicy
-
-# from skimage.metrics import structural_similarity as ssim
-
-# def loss_function(ent_weight, l2_weight):
-#         tensor_obs = types.map_maybe_dict(
-#             util.safe_to_tensor,
-#             types.maybe_unwrap_dictobs(obs),
-#         )
-#         acts = util.safe_to_tensor(acts)
-
-#         # policy.evaluate_actions's type signatures are incorrect.
-#         # See https://github.com/DLR-RM/stable-baselines3/issues/1679
-#         (_, log_prob, entropy) = policy.evaluate_actions(
-#             tensor_obs,  # type: ignore[arg-type]
-#             acts,
-#         )
-#         prob_true_act = th.exp(log_prob).mean()
-#         log_prob = log_prob.mean()
-#         entropy = entropy.mean() if entropy is not None else None
-
-#         l2_norms = [th.sum(th.square(w)) for w in policy.parameters()]
-#         l2_norm = sum(l2_norms) / 2  # divide by 2 to cancel with gradient of square
-#         # sum of list defaults to float(0) if len == 0.
-#         assert isinstance(l2_norm, th.Tensor)
-
-#         ent_loss = -self.ent_weight * (entropy if entropy is not None else th.zeros(1))
-#         neglogp = -log_prob
-#         l2_loss = self.l2_weight * l2_norm
-#         loss = neglogp + ent_loss + l2_loss
-
-#         return BCTrainingMetrics(
-#             neglogp=neglogp,
-#             entropy=entropy,
-#             ent_loss=ent_loss,
-#             prob_true_act=prob_true_act,
-#             l2_norm=l2_norm,
-#             l2_loss=l2_loss,
-#             loss=loss,
-#         )
 
 def compare_params(dict1, dict2): 
     for key in dict1.keys():
@@ -279,30 +238,7 @@ def load_data(filepath, n_stack):
 
     return actions, observations
 
-# def behavioural_cloning_training(model, actions, observations, lr, num_epochs, batch_size):
-
-#     # Convert observations and actions to tensors
-#     expert_actions = torch.tensor(actions, dtype=torch.float32, requires_grad=True)
-
-#     expert_observations = torch.tensor(observations, dtype=torch.float32, requires_grad=True)
-#     expert_observations = expert_observations.permute(0, 3, 1, 2)  # From [batch, height, width, channels] to [batch, channels, height, width]
-#     expert_observations = expert_observations.float()
-
-#     # Set model to training mode
-#     model.policy.set_training_mode(True)
-
-#     # Define an optimizer
-#     optimizer = torch.optim.Adam(model.policy.parameters(), lr=lr)
-
-#     # Set loss function: Cross Entropy Loss for discrete action spaces
-#     loss_fn = nn.CrossEntropyLoss()
-
-#     model = train_cnn(expert_observations, expert_actions, num_epochs, batch_size, model, loss_fn, optimizer)
-
-#     return model
-
-
-def behavioural_cloning(model_name, model, env, filepath, model_path, lr=1e-3, num_epochs=5, batch_size=64, n_stack=1):
+def behavioural_cloning(model_name, model, env, filepath, model_path, lr=1e-3, num_epochs=10, batch_size=64, n_stack=1):
 
     actions, observations = load_data(filepath, n_stack)
 

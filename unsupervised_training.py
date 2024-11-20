@@ -37,6 +37,52 @@ LEVEL_CHANGE = "random"
 # training_data_name = "slower"
 # training_data_name = "faster"
 
+EVALUATION_FREQ = 100000
+
+class ActionDistributionEvalCallback(EvalCallback):
+    def __init__(self, eval_env, eval_freq, n_eval_episodes=5, verbose=0, **kwargs):
+        super(ActionDistributionEvalCallback, self).__init__(
+            eval_env, eval_freq=eval_freq, n_eval_episodes=n_eval_episodes, verbose=verbose, **kwargs
+        )
+        self.action_distributions = []
+
+    def _on_step(self) -> bool:
+        # Perform evaluation when eval_freq is met
+        if self.eval_freq > 0 and self.n_calls % self.eval_freq == 0:
+            action_distribution = self._track_action_distribution()
+            self.action_distributions.append(action_distribution)
+            
+            # Log action distribution to TensorBoard
+            self._log_action_distribution(action_distribution)
+            
+            if self.verbose > 0:
+                print(f"Action distribution during evaluation: {action_distribution}")
+        return super(ActionDistributionEvalCallback, self)._on_step()
+
+    def _track_action_distribution(self):
+        # Track action distribution over evaluation episodes
+        action_count = {}
+        for _ in range(self.n_eval_episodes):
+            obs = self.eval_env.reset()
+            done = False
+            while not done:
+                action, _ = self.model.predict(obs, deterministic=False)
+                action = action.item()  # Convert to scalar for discrete actions
+                action_count[action] = action_count.get(action, 0) + 1
+                obs, _, done, _ = self.eval_env.step(action)
+        return action_count
+
+    def _log_action_distribution(self, action_distribution):
+        # Log as scalars
+        for action, count in action_distribution.items():
+            self.logger.record(f"eval/action_count_{action}", count)
+
+        # Log as a histogram (requires flattening the distribution)
+        actions = []
+        for action, count in action_distribution.items():
+            actions.extend([action] * count)
+        self.logger.record("eval/action_distribution_histogram", np.array(actions))
+
 def test_ani(env, model, string_timesteps):
         # Run a 1000 timesteps to generate a gif just as a check measure (not actual evaluation)
     # Create a figure and axis
@@ -209,9 +255,15 @@ def main(agent_index):
     test_ani(env, model, "pre_unsupervised_training")
 
     # Define callbacks
-    eval_callback = EvalCallback(env, best_model_save_path=f"{log_dir}{name_prefix}/",
-                                log_path=log_dir, eval_freq=100000,
-                                deterministic=True, render=False)
+    # eval_callback = EvalCallback(env, best_model_save_path=f"{log_dir}{name_prefix}/",
+    #                             log_path=log_dir, eval_freq=100000,
+    #                             deterministic=True, render=False)    
+    eval_callback = ActionDistributionEvalCallback(env, 
+                                                   eval_freq=100000, 
+                                                   verbose=1, 
+                                                   best_model_save_path=f"{log_dir}{name_prefix}/", 
+                                                   log_path=log_dir)
+
     checkpoint_callback = CheckpointCallback(save_freq=500000, save_path=log_dir,
                                             name_prefix=name_prefix)
 
