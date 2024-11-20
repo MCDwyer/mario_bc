@@ -113,7 +113,7 @@ class MarioEnv(gym.Env):
 
         # Define action and observation space
         # They must be gym.spaces objects
-        self.action_space = spaces.Discrete(12)
+        self.action_space = spaces.Discrete(13)
 
         # Example: observation space with continuous values between 0 and 1
         self.observation_space = gym.spaces.Box(low=0, high=255, shape=(84, 84, 1), dtype=np.uint8) # greyscale 84x84??
