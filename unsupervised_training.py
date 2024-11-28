@@ -26,6 +26,7 @@ POLICY = "CnnPolicy"
 # TRAINING_DATA_NAME = "expert_distance"
 # TRAINING_DATA_NAME = "nonexpert_distance"
 LEVEL_CHANGE = "random"
+NUM_ACTIONS = 13
 
 # TRAINING_FILEPATH = "user_data_processed_for_bc/"
 # TRAINING_FILEPATH += TRAINING_DATA_NAME + "_bc_data.obj"
@@ -62,6 +63,9 @@ class ActionDistributionEvalCallback(EvalCallback):
     def _track_action_distribution(self):
         # Track action distribution over evaluation episodes
         action_count = {}
+        for i in range(NUM_ACTIONS):
+            action_count[int(i)] = 0
+
         for _ in range(self.n_eval_episodes):
             obs = self.eval_env.reset()
             done = False
