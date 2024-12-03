@@ -294,7 +294,7 @@ if __name__ == "__main__":
     TRAINING_FILEPATH += TRAINING_DATA_NAME + "_bc_data.obj"
 
     # Configure logging to write to the file
-    logging.basicConfig(filename=f"nohup/logging_{MODEL_NAME}.txt", level=logging.INFO)
+    logging.basicConfig(filename=f"nohup/logging_{MODEL_NAME}_{TRAINING_DATA_NAME}.txt", level=logging.INFO)
 
     if USE_BC:
         filepath = TUNING_FILEPATH + f"{MODEL_NAME}_supervised_{TRAINING_DATA_NAME}_"
