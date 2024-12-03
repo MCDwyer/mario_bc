@@ -9,6 +9,7 @@ from stable_baselines3.common.monitor import Monitor
 import behavioural_cloning
 from GymEnvs.retro_env_wrapper import DiscreteToBoxWrapper
 import sys
+import logging
 
 TUNING_FILEPATH = "model_tuning_outputs/"
 
@@ -272,7 +273,7 @@ if __name__ == "__main__":
 
     TRAINING_DATA_NAME = sys.argv[1]
 
-    USE_BC = (TRAINING_DATA_NAME == "None")
+    USE_BC = not (TRAINING_DATA_NAME == "None")
 
     MODEL_NAME = sys.argv[2]
 
@@ -292,6 +293,8 @@ if __name__ == "__main__":
     TRAINING_FILEPATH = "user_data_processed_for_bc/"
     TRAINING_FILEPATH += TRAINING_DATA_NAME + "_bc_data.obj"
 
+    # Configure logging to write to the file
+    logging.basicConfig(filename=f"nohup/logging_{MODEL_NAME}.txt", level=logging.INFO)
 
     if USE_BC:
         filepath = TUNING_FILEPATH + f"{MODEL_NAME}_supervised_{TRAINING_DATA_NAME}_"
