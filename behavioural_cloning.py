@@ -4,7 +4,7 @@ import numpy as np
 import pickle
 import copy
 
-from custom_cnn import CustomCnnPolicy
+from custom_cnn import CustomActorCriticCnnPolicy
 
 def compare_params(dict1, dict2): 
     for key in dict1.keys():
@@ -14,94 +14,31 @@ def compare_params(dict1, dict2):
     return True
 
 
+# def copy_policy(policy_a, policy_b):
+#     fully
+#     policy_a.load_state_dict(policy_b.state_dict())
+
+
 def pretrain_ppo_with_bc(model, env, actions, observations, lr, num_epochs, batch_size, device='cpu'):
-    # create a custom cnn policy to pretrain
-    policy = CustomCnnPolicy(env)
 
-    # Define optimizer and loss
-    optimizer = torch.optim.Adam(model.policy.parameters(), lr=lr)
-    criterion = nn.CrossEntropyLoss()  # Use MSELoss for continuous action spaces
+    policy = CustomActorCriticCnnPolicy(model)
 
-    # Expert data should not require gradients
-    expert_actions = torch.tensor(actions, dtype=torch.long).to(device)
-    # expert_actions = torch.tensor(actions, dtype=torch.long).to(device)
-    expert_observations = torch.tensor(observations, dtype=torch.float32).to(device)
+    policy.load_state_dict(model.policy.state_dict())
 
-    dataset_size = len(observations)
+    if compare_params(model.policy.state_dict(), policy.state_dict()):
+        print("Custom policy initialised")
 
-    for epoch in range(num_epochs):
-        # Shuffle data at the start of each epoch
-        permutation = np.random.permutation(len(expert_observations))
-        expert_obs = expert_observations[permutation]
-        expert_acts = expert_actions[permutation]
+    policy.bc_training(observations, actions, num_epochs, batch_size, device)
 
-        epoch_loss = 0.0
-        num_batches = int(np.ceil(dataset_size / batch_size))
-
-        # Mini-batch training
-        for i in range(num_batches):
-            batch_indices = np.random.choice(dataset_size, batch_size)
-            obs_batch = expert_obs[batch_indices]
-            action_batch = expert_acts[batch_indices]
-
-            optimizer.zero_grad()
-
-            # Forward pass
-            action_logits, _ = policy(obs_batch)  # Only use the policy head
-            loss = criterion(action_logits, action_batch)
-
-            loss.backward()  # Backpropagation to compute gradients
-            optimizer.step()  # Update model parameters
-
-            epoch_loss += loss.item()
-
-        print(f"Epoch [{epoch+1}/{num_epochs}], Loss: {epoch_loss/num_batches:.4f}")
-
-    tmp_policy_dict = policy.state_dict()
-
-    # Create a mapping dictionary to rename keys
-    custom_weights = {
-        # CNN layers
-        'features_extractor.cnn.0.weight': tmp_policy_dict['features_extractor.conv1.weight'],
-        'features_extractor.cnn.0.bias': tmp_policy_dict['features_extractor.conv1.bias'],
-        'features_extractor.cnn.2.weight': tmp_policy_dict['features_extractor.conv2.weight'],
-        'features_extractor.cnn.2.bias': tmp_policy_dict['features_extractor.conv2.bias'],
-        'features_extractor.cnn.4.weight': tmp_policy_dict['features_extractor.conv3.weight'],
-        'features_extractor.cnn.4.bias': tmp_policy_dict['features_extractor.conv3.bias'],
-        
-        # Fully connected layer in feature extractor
-        'features_extractor.linear.0.weight': tmp_policy_dict['features_extractor.fc.weight'],
-        'features_extractor.linear.0.bias': tmp_policy_dict['features_extractor.fc.bias'],
-        
-        # Final policy and value heads
-        'action_net.weight': tmp_policy_dict['action_net.weight'],
-        'action_net.bias': tmp_policy_dict['action_net.bias'],
-        'value_net.weight': tmp_policy_dict['value_net.weight'],
-        'value_net.bias': tmp_policy_dict['value_net.bias']
-    }
-
-    print(compare_params(model.policy.state_dict(), custom_weights))
-
-    # model.policy = policy
     policy_params_before = copy.deepcopy(model.policy.state_dict())
 
-    # Map custom model's weights to Stable Baselines3 model based on the correct names
-    model.policy.features_extractor.cnn[0].weight.data = tmp_policy_dict['features_extractor.conv1.weight']
-    model.policy.features_extractor.cnn[0].bias.data = tmp_policy_dict['features_extractor.conv1.bias']
-    model.policy.features_extractor.cnn[2].weight.data = tmp_policy_dict['features_extractor.conv2.weight']
-    model.policy.features_extractor.cnn[2].bias.data = tmp_policy_dict['features_extractor.conv2.bias']
-    model.policy.features_extractor.cnn[4].weight.data = tmp_policy_dict['features_extractor.conv3.weight']
-    model.policy.features_extractor.cnn[4].bias.data = tmp_policy_dict['features_extractor.conv3.bias']
-    model.policy.features_extractor.linear[0].weight.data = tmp_policy_dict['features_extractor.fc.weight']
-    model.policy.features_extractor.linear[0].bias.data = tmp_policy_dict['features_extractor.fc.bias']
+    if compare_params(policy_params_before, policy.state_dict()):
+        print("Custom policy weights have been updated.")
 
-    # Final policy and value heads
-    model.policy.action_net.weight.data = tmp_policy_dict['action_net.weight']
-    model.policy.action_net.bias.data = tmp_policy_dict['action_net.bias']
-    model.policy.value_net.weight.data = tmp_policy_dict['value_net.weight']
-    model.policy.value_net.bias.data = tmp_policy_dict['value_net.bias']
+    model.policy.load_state_dict(policy.state_dict())
 
-    print(compare_params(model.policy.state_dict(), policy_params_before))
+    if compare_params(model.policy.state_dict(), policy.state_dict()):
+        print("Custom policy copied to model successfully.")
 
     return model
 
@@ -195,16 +132,30 @@ def pretrain_sac_with_bc(model, actions, observations, lr, num_epochs, batch_siz
 
     return model
 
-def load_data(filepath, n_stack):
+def load_data(filepath, env, n_stack=1):
     # load in data
     with open(filepath, 'rb') as file:
-        trajectories = pickle.load(file)
+        loaded_data = pickle.load(file)
 
-    trajectories = np.array(trajectories, dtype=object)
+    # infos = []
+    # trajectories = []
 
-    # [obs, act, done, next_obs]
+    # for x in loaded_data:
+    trajectories = np.array(loaded_data, dtype=object)
+    # trajectories = np.array(loaded_data, dtype=object)[:, :-1]
+
+    # trajectories = np.array(trajectories, dtype=object)
+
+    # [obs, act, done, next_obs, infos, next_infos]
+
+
+    print(trajectories[:,0].shape)
+    print(trajectories[:,1].shape)
 
     observations = []
+    actions = []
+    next_observations = []
+    rewards = []
 
     stacked_obs = []
 
@@ -212,7 +163,14 @@ def load_data(filepath, n_stack):
     
     for i, trajectory in enumerate(trajectories):
 
-        stacked_obs.append(trajectory[0])
+        obs = trajectory[0]
+        action = trajectory[1]
+        done = trajectory[2]
+        next_obs = trajectory[3]
+        info = trajectory[4]
+        next_info = trajectory[5]
+
+        stacked_obs.append(obs)
 
         if len(stacked_obs) == n_stack:
             # add stacked_obs to observations
@@ -220,27 +178,38 @@ def load_data(filepath, n_stack):
             stacked_obs_arr = stacked_obs_arr.reshape(n_stack, 84, 84)
 
             observations.append(stacked_obs_arr)
+            next_observations.append(next_obs)
+            actions.append(action)
+            reward = env.reward(info, next_info, done)
+            rewards.append(reward)
 
-            if trajectory[2]:
+            if done:
                 # end of attempt
                 stacked_obs = []
+
             else:
                 # remove first bit of stacked_obs
                 stacked_obs.pop(0)
 
     # for some reason have to do it this way, otherwise it gets upset
-    # observations = [np.array(obs, dtype=np.float32) for obs in trajectories[:, 0]]
     observations = np.array(observations)
-    print(observations.shape)
+    print(f"observations: {observations.shape}")
     # observations = preprocess_observations(observations)
 
-    actions = np.array(trajectories[:, 1], dtype=np.float32)
+    actions = np.array(actions)
+    print(f"actions: {actions.shape}")
 
-    return actions, observations
+    next_observations = np.array(next_observations)
+    print(f"next observations: {next_observations.shape}")
 
-def behavioural_cloning(model_name, model, env, filepath, model_path, lr=1e-3, num_epochs=10, batch_size=64, n_stack=1):
+    rewards = np.array(rewards)
+    print(f"rewards: {rewards.shape}")
 
-    actions, observations = load_data(filepath, n_stack)
+    return actions, observations, next_observations, rewards
+
+def behavioural_cloning(model_name, model, env, filepath, model_path, lr=1e-2, num_epochs=10, batch_size=64, n_stack=1):
+
+    actions, observations, next_observations, rewards = load_data(filepath, n_stack)
 
     if model_name == "PPO":
         print("PPO behaviour cloning starting")
