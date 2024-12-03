@@ -5,7 +5,7 @@ conda run -n mario_bc_env python --version
 conda run -n mario_bc_env pip install setuptools==41.2.0
 conda run -n mario_bc_env pip install numpy
 conda run -n mario_bc_env pip install pandas
-conda run -n mario_bc_env pip install pytorch
+conda run -n mario_bc_env pip install torch
 conda run -n mario_bc_env pip install plotly
 conda run -n mario_bc_env pip install nbformat
 conda run -n mario_bc_env pip install scikit-learn
