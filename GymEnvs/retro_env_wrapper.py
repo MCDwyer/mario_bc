@@ -228,6 +228,22 @@ class MarioEnv(gym.Env):
             return 0 #???           
         
         return reward
+    
+    @staticmethod
+    def reward(info, next_info, state_change):
+
+        current_horizontal_position = next_info["x_frame"]*256 + next_info["x_position_in_frame"]
+
+        prev_horizontal_position = info["x_frame"]*256 + info["x_position_in_frame"]
+
+        reward = current_horizontal_position - prev_horizontal_position
+
+        # player_state == 11 is dying, 5 is level change type bits, 8 is normal play?
+        if state_change:
+            return 0 #???           
+        
+        return reward
+
 
     def map_to_retro_action(self, action):
         # this is to map from discrete action space to the retro env space, including the multi-press button options

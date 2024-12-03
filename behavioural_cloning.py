@@ -178,8 +178,13 @@ def load_data(filepath, env, n_stack=1):
             stacked_obs_arr = stacked_obs_arr.reshape(n_stack, 84, 84)
 
             observations.append(stacked_obs_arr)
-            next_observations.append(next_obs)
+
+            next_obs_arr = np.array(next_obs)
+            next_obs_arr = next_obs_arr.reshape(1, 84, 84)
+            next_observations.append(next_obs_arr)
+
             actions.append(action)
+            
             reward = env.reward(info, next_info, done)
             rewards.append(reward)
 
@@ -209,7 +214,7 @@ def load_data(filepath, env, n_stack=1):
 
 def behavioural_cloning(model_name, model, env, filepath, model_path, lr=1e-2, num_epochs=10, batch_size=64, n_stack=1):
 
-    actions, observations, next_observations, rewards = load_data(filepath, n_stack)
+    actions, observations, next_observations, rewards = load_data(filepath, env, n_stack)
 
     if model_name == "PPO":
         print("PPO behaviour cloning starting")
