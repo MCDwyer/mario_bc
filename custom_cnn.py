@@ -1,171 +1,112 @@
-# import torch as th
-# import torch.nn as nn
-# from stable_baselines3.common.torch_layers import BaseFeaturesExtractor
-# from stable_baselines3 import PPO
-# from stable_baselines3.common.policies import ActorCriticCnnPolicy
-# import gymnasium as gym
-# from gym import spaces
-# # import gym
-
-# class CustomCNN(BaseFeaturesExtractor):
-#     """
-#     Custom CNN feature extractor for the policy network.
-#     """
-#     def __init__(self, observation_space: spaces.Box, features_dim: int = 512):
-#         # Call the BaseFeaturesExtractor constructor
-#         super(CustomCNN, self).__init__(observation_space, features_dim)
-        
-#         # Define the CNN architecture
-#         self.cnn = nn.Sequential(
-#             nn.Conv2d(in_channels=observation_space.shape[0], out_channels=32, kernel_size=8, stride=4, padding=0),
-#             nn.ReLU(),
-#             nn.Conv2d(in_channels=32, out_channels=64, kernel_size=4, stride=2, padding=0),
-#             nn.ReLU(),
-#             nn.Conv2d(in_channels=64, out_channels=64, kernel_size=3, stride=1, padding=0),
-#             nn.ReLU(),
-#             nn.Flatten()
-#         )
-        
-#         # Compute the size of the flattened features after the CNN layers
-#         with th.no_grad():
-#             # Dummy forward pass to get the output size of the CNN
-#             n_flatten = self.cnn(th.as_tensor(observation_space.sample()[None]).float()).shape[1]
-        
-#         # Final fully connected layer to reduce to the desired feature size (features_dim)
-#         self.linear = nn.Sequential(
-#             nn.Linear(n_flatten, features_dim),
-#             nn.ReLU()
-#         )
-
-#     def forward(self, observations: th.Tensor) -> th.Tensor:
-#         # Pass the observations through the CNN and then the linear layer
-#         return self.linear(self.cnn(observations))
-
-# class CustomCnnPolicy(ActorCriticCnnPolicy):
-#     def __init__(self, *args, **kwargs):
-#         # Use the custom CNN as the feature extractor
-#         super(CustomCnnPolicy, self).__init__(
-#             *args, 
-#             **kwargs,
-#             features_extractor_class=CustomCNN,
-#             features_extractor_kwargs=dict(features_dim=512)  # Pass feature dimension
-#         )
-
-
 import torch
 import torch.nn as nn
-import torch.nn.functional as F
-import gymnasium as gym
-
-DIMENSIONS = 512
-class CustomNatureCNN(nn.Module):
-    def __init__(self, input_channels=4, output_dim=512):
-        super(CustomNatureCNN, self).__init__()
-        
-        # Convolutional layers
-        self.conv1 = nn.Conv2d(input_channels, 32, kernel_size=8, stride=4)
-        self.conv2 = nn.Conv2d(32, 64, kernel_size=4, stride=2)
-        self.conv3 = nn.Conv2d(64, 64, kernel_size=3, stride=1)
-        
-        # Calculate the output shape after convolutions for the fully connected layer
-        with torch.no_grad():
-            sample_input = torch.zeros(1, input_channels, 84, 84)
-            conv_out = self._forward_cnn(sample_input)
-            self.fc_input_dim = conv_out.view(-1).shape[0]
-        
-        # Fully connected layer for feature extraction
-        self.fc = nn.Linear(self.fc_input_dim, output_dim)
-
-    def _forward_cnn(self, x):
-        x = F.relu(self.conv1(x))
-        x = F.relu(self.conv2(x))
-        x = F.relu(self.conv3(x))
-        return x
-
-    def forward(self, x):
-        x = self._forward_cnn(x)
-        x = x.view(x.size(0), -1)  # Flatten for the fully connected layer
-        x = F.relu(self.fc(x))
-        return x
-
-class CustomMLPExtractor(nn.Module):
-    def __init__(self, input_dim=512):
-        super(CustomMLPExtractor, self).__init__()
-        
-        # MLP layers for policy and value networks
-        self.policy_net = nn.Sequential(
-            nn.Linear(input_dim, DIMENSIONS),
-            nn.ReLU()
-        )
-        self.value_net = nn.Sequential(
-            nn.Linear(input_dim, DIMENSIONS),
-            nn.ReLU()
-        )
-
-    def forward(self, x):
-        policy_features = self.policy_net(x)
-        value_features = self.value_net(x)
-        return policy_features, value_features
-
-class CustomCnnPolicy(nn.Module):
-    def __init__(self, env):
-        super(CustomCnnPolicy, self).__init__()
-
-        # Check the observation space
-        obs_shape = env.observation_space.shape
-        if len(obs_shape) == 3:
-            # Typically for image observations, the shape will be (Height, Width, Channels)
-            input_channels = obs_shape[2]
-        else:
-            # If it's a flat observation space, the whole shape can be used
-            input_channels = obs_shape[0]  # for non-image environments, like CartPole
-
-        # Check the action space
-        if isinstance(env.action_space, gym.spaces.Discrete):
-            action_space = env.action_space.n  # Number of discrete actions
-        else:
-            action_space = env.action_space.shape[0]  # for continuous actions (like in MuJoCo)
-
-        input_dim = 512
-        # Feature extractor
-        self.features_extractor = CustomNatureCNN(input_channels, output_dim=input_dim)
-        
-        # # MLP layers for policy and value
-        self.mlp_extractor = CustomMLPExtractor(input_dim=input_dim)
-
-        self.pi_features_extractor = CustomNatureCNN(input_channels, output_dim=input_dim)
-        self.vf_features_extractor = CustomNatureCNN(input_channels, output_dim=input_dim)
-        
-        # Action and value heads
-        self.action_net = nn.Linear(input_dim, action_space)
-        self.value_net = nn.Linear(input_dim, 1)
-
-    def forward(self, x):
-        # Extract features from CNN
-        features = self.features_extractor(x)
-        
-        # Process features with MLP for policy and value
-        # policy_features = self.pi_features_extractor(features)
-        # value_features = self.vf_features_extractor(features)
-        policy_features, value_features = self.mlp_extractor(features)
-        
-        # Final policy and value outputs
-        action_logits = self.action_net(policy_features)
-        value = self.value_net(value_features)
-        
-        return action_logits, value
-
-    def predict(self, x):
-        action_logits, value = self.forward(x)
-        action_probs = F.softmax(action_logits, dim=-1)
-        return action_probs, value
-
 
 from stable_baselines3.common.policies import ActorCriticCnnPolicy
+from stable_baselines3.dqn.policies import CnnPolicy
+
 from gymnasium import spaces
 import numpy as np
 import copy
-import torch as th
+
+class CustomDQNPolicy(CnnPolicy):
+    """
+    Policy class for DQN when using images as input.
+
+    :param observation_space: Observation space
+    :param action_space: Action space
+    :param lr_schedule: Learning rate schedule (could be constant)
+    :param net_arch: The specification of the policy and value networks.
+    :param activation_fn: Activation function
+    :param features_extractor_class: Features extractor to use.
+    :param normalize_images: Whether to normalize images or not,
+         dividing by 255.0 (True by default)
+    :param optimizer_class: The optimizer to use,
+        ``th.optim.Adam`` by default
+    :param optimizer_kwargs: Additional keyword arguments,
+        excluding the learning rate, to pass to the optimizer
+    """
+
+    def __init__(self, rl_agent):
+        rl_policy = rl_agent.policy
+        
+        super().__init__(
+            rl_policy.observation_space,
+            rl_policy.action_space,
+            rl_agent.lr_schedule,
+            rl_policy.net_arch,
+            rl_policy.activation_fn,
+            rl_policy.features_extractor_class,
+            rl_policy.features_extractor_kwargs,
+            rl_policy.normalize_images,
+            rl_policy.optimizer_class,
+            rl_policy.optimizer_kwargs,
+            )
+        
+        self.criterion = nn.CrossEntropyLoss()
+        
+    def bc_actions(self, obs):
+
+        features = self.extract_features(obs)
+        if self.share_features_extractor:
+            latent_pi, _ = self.mlp_extractor(features)
+        else:
+            pi_features, vf_features = features
+            latent_pi = self.mlp_extractor.forward_actor(pi_features)
+            # latent_vf = self.mlp_extractor.forward_critic(vf_features)
+
+        mean_actions = self.action_net(latent_pi)
+
+        return mean_actions
+
+    def bc_training(self, observations, actions, num_epochs, batch_size, device="cpu") -> None:
+
+        # Expert data should not require gradients
+        expert_actions = torch.tensor(actions, dtype=torch.long).to(device)
+        expert_observations = torch.tensor(observations, dtype=torch.float32).to(device)
+
+        dataset_size = len(observations)
+
+        # Switch to train mode (this affects batch norm / dropout)
+        self.set_training_mode(True)
+        
+        for epoch in range(num_epochs):
+            # Shuffle data at the start of each epoch
+            permutation = np.random.permutation(len(expert_observations))
+            expert_obs = copy.deepcopy(expert_observations[permutation])
+            expert_acts = copy.deepcopy(expert_actions[permutation])
+
+            epoch_loss = 0.0
+            num_batches = int(np.ceil(dataset_size / batch_size))
+
+            # Mini-batch training
+            for i in range(num_batches):
+                # batch_indices = np.random.choice(dataset_size, batch_size)
+                obs_batch = expert_obs[:batch_size]
+                action_batch = expert_acts[:batch_size]
+
+                # Forward pass
+                pred_actions = self.bc_actions(obs_batch)
+
+                if isinstance(self.action_space, spaces.Discrete):
+                    # Convert discrete action from float to long
+                    action_batch = action_batch.long().flatten()
+                    # pred_actions = pred_actions.long().flatten()
+
+                loss = self.criterion(pred_actions, action_batch)
+
+                # Optimization step
+                self.optimizer.zero_grad()
+                loss.backward()
+                self.optimizer.step()
+
+                epoch_loss += loss.item()
+
+                expert_obs = expert_obs[batch_size:]
+                expert_acts = expert_acts[batch_size:]
+
+            print(f"Epoch [{epoch+1}/{num_epochs}], Loss: {epoch_loss/num_batches:.4f}")
+
+        
 
 
 class CustomActorCriticCnnPolicy(ActorCriticCnnPolicy):

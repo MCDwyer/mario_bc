@@ -6,6 +6,21 @@ import copy
 
 from custom_cnn import CustomActorCriticCnnPolicy
 
+def calc_reward(info, next_info, state_change):
+
+    current_horizontal_position = next_info["x_frame"]*256 + next_info["x_position_in_frame"]
+
+    prev_horizontal_position = info["x_frame"]*256 + info["x_position_in_frame"]
+
+    reward = current_horizontal_position - prev_horizontal_position
+
+    # player_state == 11 is dying, 5 is level change type bits, 8 is normal play?
+    if state_change:
+        return 0 #???           
+    
+    return reward
+
+
 def compare_params(dict1, dict2): 
     for key in dict1.keys():
         if not torch.equal(dict1[key], dict2[key]): 
@@ -14,12 +29,10 @@ def compare_params(dict1, dict2):
     return True
 
 
-# def copy_policy(policy_a, policy_b):
-#     fully
-#     policy_a.load_state_dict(policy_b.state_dict())
+def pretrain_actor_critic_with_bc(model, actions, observations, lr, num_epochs, batch_size, device='cpu'):
 
-
-def pretrain_ppo_with_bc(model, env, actions, observations, lr, num_epochs, batch_size, device='cpu'):
+    model_lr = copy.deepcopy(model.learning_rate)
+    model.learning_rate = lr
 
     policy = CustomActorCriticCnnPolicy(model)
 
@@ -39,6 +52,8 @@ def pretrain_ppo_with_bc(model, env, actions, observations, lr, num_epochs, batc
 
     if compare_params(model.policy.state_dict(), policy.state_dict()):
         print("Custom policy copied to model successfully.")
+
+    model.learning_rate = model_lr
 
     return model
 
@@ -185,7 +200,7 @@ def load_data(filepath, env, n_stack=1):
 
             actions.append(action)
             
-            reward = env.reward(info, next_info, done)
+            reward = calc_reward(info, next_info, done)
             rewards.append(reward)
 
             if done:
@@ -218,13 +233,15 @@ def behavioural_cloning(model_name, model, env, filepath, model_path, lr=1e-2, n
 
     if model_name == "PPO":
         print("PPO behaviour cloning starting")
-        model = pretrain_ppo_with_bc(model, env, actions, observations, lr, num_epochs, batch_size)
+        model = pretrain_actor_critic_with_bc(model, actions, observations, lr, num_epochs, batch_size)
     elif model_name == "DQN":
         print("DQN behaviour cloning starting")
-        model = pretrain_dqn_with_bc(model, actions, observations, lr, num_epochs, batch_size)
+        model = pretrain_ppo_with_bc(model, actions, observations, lr, num_epochs, batch_size)
+        # model = pretrain_dqn_with_bc(model, actions, observations, lr, num_epochs, batch_size)
     elif model_name == "SAC":
         print("SAC behaviour cloning starting")
-        model = pretrain_sac_with_bc(model, actions, observations, lr, num_epochs, batch_size)
+        model = pretrain_actor_critic_with_bc(model, actions, observations, lr, num_epochs, batch_size)
+        # model = pretrain_sac_with_bc(model, actions, observations, lr, num_epochs, batch_size)
 
     print(f"behaviour cloning finished, being saved to {model_path}")
     model.save(model_path)

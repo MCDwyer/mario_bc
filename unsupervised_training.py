@@ -11,6 +11,10 @@ import sys
 # from stable_baselines3.common.vec_env import DummyVecEnv, VecFrameStack
 # from stable_baselines3.common.monitor import Monitor
 import torch
+import time
+import psutil
+import os
+
 
 import behavioural_cloning
 # from custom_cnn import CustomCnnPolicy
@@ -308,6 +312,9 @@ if __name__ == "__main__":
         print("Usage: python unsupervised_training.py <index_number> <training_data_name> <model>")
         sys.exit(1)
 
+    # Start timing
+    start_time = time.time()
+
     agent_index = sys.argv[1]
     TRAINING_DATA_NAME = sys.argv[2]
     MODEL_NAME = sys.argv[3]
@@ -330,3 +337,12 @@ if __name__ == "__main__":
     print(f"Starting training for agent {agent_index} with model type: {MODEL_NAME} and using {TRAINING_DATA_NAME} training data.")
 
     main(agent_index)
+
+    end_time = time.time()
+
+    # Get memory usage
+    process = psutil.Process(os.getpid())
+    memory_usage = process.memory_info().rss / (1024 * 1024)  # Convert to MB
+
+    print(f"Runtime: {end_time - start_time} seconds")
+    print(f"Memory Usage: {memory_usage:.2f} MB")
