@@ -1,0 +1,146 @@
+2,38c2,101
+<     "info": {
+<       "coins": {
+<         "address": 1886,
+<         "type": "|u1"
+<       },
+<       "levelHi": {
+<         "address": 1887,
+<         "type": "|i1"
+<       },
+<       "levelLo": {
+<         "address": 1884,
+<         "type": "|i1"
+<       },
+<       "lives": {
+<         "address": 1882,
+<         "type": "|i1"
+<       },
+<       "score": {
+<         "address": 2013,
+<         "type": ">n6"
+<       },
+<       "scrolling": {
+<         "address": 1912,
+<         "type": "|i1"
+<       },
+<       "time": {
+<         "address": 2040,
+<         "type": ">n3"
+<       },
+<       "xscrollHi": {
+<         "address": 1818,
+<         "type": "|u1"
+<       },
+<       "xscrollLo": {
+<         "address": 1820,
+<         "type": "|u1"
+<       }
+---
+>   "info": {
+>     "coins": {
+>       "address": 1886,
+>       "type": "|u1"
+>     },
+>     "levelHi": {
+>       "address": 1887,
+>       "type": "|i1"
+>     },
+>     "levelLo": {
+>       "address": 1884,
+>       "type": "|i1"
+>     },
+>     "lives": {
+>       "address": 1882,
+>       "type": "|i1"
+>     },
+>     "score": {
+>       "address": 2013,
+>       "type": ">n6"
+>     },
+>     "scrolling": {
+>       "address": 1912,
+>       "type": "|i1"
+>     },
+>     "time": {
+>       "address": 2040,
+>       "type": ">n3"
+>     },
+>     "xscrollHi": {
+>       "address": 1818,
+>       "type": "|u1"
+>     },
+>     "xscrollLo": {
+>       "address": 1820,
+>       "type": "|u1"
+>     },
+>     "x_frame": {
+>       "address": 109,
+>       "type": "|u1"
+>     },
+>     "x_position_in_frame": {
+>       "address": 134,
+>       "type": "|u1"
+>     },
+>     "y_frame": {
+>       "address": 181,
+>       "type": "|u1"
+>     },
+>     "y_position_in_frame": {
+>       "address": 206,
+>       "type": "|u1"
+>     },
+>     "enemy_x_0": {
+>       "address": 135,
+>       "type": "|u1"
+>     },
+>     "enemy_x_1": {
+>       "address": 136,
+>       "type": "|u1"
+>     },
+>     "enemy_x_2": {
+>       "address": 137,
+>       "type": "|u1"
+>     },
+>     "enemy_x_3": {
+>       "address": 138,
+>       "type": "|u1"
+>     },
+>     "enemy_x_4": {
+>       "address": 139,
+>       "type": "|u1"
+>     },
+>     "enemy_y_0": {
+>       "address": 207,
+>       "type": "|u1"
+>     },
+>     "enemy_y_1": {
+>       "address": 208,
+>       "type": "|u1"
+>     },
+>     "enemy_y_2": {
+>       "address": 209,
+>       "type": "|u1"
+>     },
+>     "enemy_y_3": {
+>       "address": 210,
+>       "type": "|u1"
+>     },
+>     "enemy_y_4": {
+>       "address": 211,
+>       "type": "|u1"
+>     },
+>     "level":{
+>       "address": 1888,
+>       "type": "|u1"
+>     },
+>     "player_state":{
+>       "address": 14,
+>       "type": "|u1"
+40c103,104
+<   }
+\ No newline at end of file
+---
+>   }
+> }
+\ No newline at end of file
