@@ -8,39 +8,19 @@ from stable_baselines3.common.callbacks import EvalCallback, CheckpointCallback
 from stable_baselines3.common.logger import configure
 import json
 import sys
-# from stable_baselines3.common.vec_env import DummyVecEnv, VecFrameStack
-# from stable_baselines3.common.monitor import Monitor
 import torch
 import time
 import psutil
 import os
 
-
 import behavioural_cloning
-# from custom_cnn import CustomCnnPolicy
 
 TIMESTEP_INCREMENT = 1000000
 TIMESTEPS = 10000000
-# UNSUPERVISED = False
 RETRAINING = False
-# MODEL_NAME = "PPO"
-# MODEL_CLASS = PPO
 POLICY = "CnnPolicy"
-# TRAINING_DATA_NAME = "amalgam"
-# TRAINING_DATA_NAME = "expert_distance"
-# TRAINING_DATA_NAME = "nonexpert_distance"
 LEVEL_CHANGE = "random"
 NUM_ACTIONS = 13
-
-# TRAINING_FILEPATH = "user_data_processed_for_bc/"
-# TRAINING_FILEPATH += TRAINING_DATA_NAME + "_bc_data.obj"
-# LEVEL_CHANGE = "single_level_Level1-1"
-
-# training_data_name = "expert_score"
-# training_data_name = "nonexpert_score"
-
-# training_data_name = "slower"
-# training_data_name = "faster"
 
 EVALUATION_FREQ = 100000
 
@@ -75,23 +55,9 @@ class ActionDistributionEvalCallback(EvalCallback):
             done = False
             while not done:
                 action, _ = self.model.predict(obs, deterministic=False)
-                # action = np.array([action])  # Wrap action as a numpy array for compatibility
-                # action_scalar = action.item()  # Convert to scalar for logging distribution
                 action_count[int(action)] = action_count.get(int(action), 0) + 1
                 obs, _, done, _ = self.eval_env.step(action)
         return action_count
-    # def _track_action_distribution(self):
-    #     # Track action distribution over evaluation episodes
-    #     action_count = {}
-    #     for _ in range(self.n_eval_episodes):
-    #         obs = self.eval_env.reset()
-    #         done = False
-    #         while not done:
-    #             action, _ = self.model.predict(obs, deterministic=False)
-    #             action = action.item()  # Convert to scalar for discrete actions
-    #             action_count[action] = action_count.get(action, 0) + 1
-    #             obs, _, done, _ = self.eval_env.step(action)
-    #     return action_count
 
     def _log_action_distribution(self, action_distribution):
         # Log as scalars

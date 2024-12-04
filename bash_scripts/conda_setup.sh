@@ -1,11 +1,7 @@
-conda env create --force -f environment.yml
+conda env remove -n mario_bc_env && conda env create -f environment.yml
 
 conda run -n mario_bc_env python --version
 
-# conda install -c conda-forge setuptools=41.2.0 numpy pandas torch
-
-# conda run -n mario_bc_env pip --version
-# conda run -n mario_bc_env pip install -U pip setuptools==41.2.0
 conda run -n mario_bc_env pip install numpy==1.21.6
 conda run -n mario_bc_env pip install pandas==1.3.5
 conda run -n mario_bc_env pip install torch==1.13.1
@@ -23,3 +19,18 @@ conda run -n mario_bc_env pip install scipy==1.7.3
 conda run -n mario_bc_env pip install gym==0.25.2
 conda run -n mario_bc_env pip install gym-retro==0.8.0
 conda run -n mario_bc_env pip install kaleido==0.2.1
+
+# import nes roms
+conda run -n mario_bc_env python -m retro.import "./NES_ROMS/"
+
+# get path for moving the data json files
+env_path_var=$(conda run -n mario_bc_env bash -c 'echo $CONDA_PREFIX')
+full_retro_data_path="$env_path_var/lib/python3.7/site-packages/retro/data/stable/SuperMarioBros-Nes"
+
+# update the json file for SuperMarioBros-Nes
+cp gym_retro_json_updates/SuperMarioBros-Nes/data.json $full_retro_data_path
+
+# make empty directories for the random outputs you might need
+mkdir nohup
+mkdir model_tuning_outputs
+mkdir test_gifs

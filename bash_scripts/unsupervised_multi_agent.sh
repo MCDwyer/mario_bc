@@ -12,6 +12,9 @@ START_INDEX=$1
 NUM_TIMES=$2
 MODEL_NAME=$3
 
+env_path_var=$(conda run -n mario_bc_env bash -c 'echo $CONDA_PREFIX')
+source activate $env_path_var
+
 # Loop to run the Python script multiple times
 for (( i=START_INDEX; i<(NUM_TIMES + START_INDEX); i++ ))
 do
