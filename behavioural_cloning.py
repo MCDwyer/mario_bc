@@ -147,22 +147,13 @@ def pretrain_sac_with_bc(model, actions, observations, lr, num_epochs, batch_siz
 
     return model
 
-def load_data(filepath, env, n_stack=1):
+def load_data(filepath, n_stack=1):
     # load in data
     with open(filepath, 'rb') as file:
         loaded_data = pickle.load(file)
 
-    # infos = []
-    # trajectories = []
-
-    # for x in loaded_data:
     trajectories = np.array(loaded_data, dtype=object)
-    # trajectories = np.array(loaded_data, dtype=object)[:, :-1]
-
-    # trajectories = np.array(trajectories, dtype=object)
-
     # [obs, act, done, next_obs, infos, next_infos]
-
 
     print(trajectories[:,0].shape)
     print(trajectories[:,1].shape)
@@ -213,37 +204,47 @@ def load_data(filepath, env, n_stack=1):
 
     # for some reason have to do it this way, otherwise it gets upset
     observations = np.array(observations)
-    print(f"observations: {observations.shape}")
-    # observations = preprocess_observations(observations)
-
     actions = np.array(actions)
-    print(f"actions: {actions.shape}")
-
     next_observations = np.array(next_observations)
-    print(f"next observations: {next_observations.shape}")
-
     rewards = np.array(rewards)
-    print(f"rewards: {rewards.shape}")
 
     return actions, observations, next_observations, rewards
 
 def behavioural_cloning(model_name, model, env, filepath, model_path, lr=1e-2, num_epochs=10, batch_size=64, n_stack=1):
 
-    actions, observations, next_observations, rewards = load_data(filepath, env, n_stack)
+    actions, observations, next_observations, rewards = load_data(filepath, n_stack)
+
+    print("BC Training Info")
+    print(f"Model: {model_name}, BC dataset filepath: {filepath}")
+    print("Dataset information:")
+    print(f"\tObservations: {observations.shape}")
+    print(f"\tActions: {actions.shape}\n")
+    print("Parameters for BC:")
+    print(f"\tLearning rate: {lr}")
+    print(f"\tNumber of Epochs: {num_epochs}")
+    print(f"\tBatch Size: {batch_size}")
+    print(f"\tObservation Stack: {n_stack}\n")
+    print(f"Model Parameters (stored on model): {model.policy_kwargs}\n")
+    print("Model Policy Structure:")
+    print(model.policy)
+    print()
+
+    # print(f"\tNext observations: {next_observations.shape}")
+    # print(f"\tRewards: {rewards.shape}")
 
     if model_name == "PPO":
         print("PPO behaviour cloning starting")
         model = pretrain_actor_critic_with_bc(model, actions, observations, lr, num_epochs, batch_size)
     elif model_name == "DQN":
         print("DQN behaviour cloning starting")
-        model = pretrain_ppo_with_bc(model, actions, observations, lr, num_epochs, batch_size)
+        model = pretrain_dqn_with_bc(model, actions, observations, lr, num_epochs, batch_size)
         # model = pretrain_dqn_with_bc(model, actions, observations, lr, num_epochs, batch_size)
     elif model_name == "SAC":
         print("SAC behaviour cloning starting")
         model = pretrain_actor_critic_with_bc(model, actions, observations, lr, num_epochs, batch_size)
         # model = pretrain_sac_with_bc(model, actions, observations, lr, num_epochs, batch_size)
 
-    print(f"behaviour cloning finished, being saved to {model_path}")
+    print(f"Behaviour cloning finished, being saved to {model_path}.")
     model.save(model_path)
 
     return model
