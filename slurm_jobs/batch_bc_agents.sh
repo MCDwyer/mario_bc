@@ -16,5 +16,6 @@ EXP_ID=$5
 # Loop to run the Python script multiple times
 for (( i=START_INDEX; i<(NUM_TIMES + START_INDEX); i++ ))
 do
-    sbatch bc_training.slurm $MODEL_TYPE $i $BC_DATA $EXP_ID
+    JOB_NAME="${EXP_ID}_BC_TRAINING_${BC_DATA}_${MODEL_TYPE}_${i}"
+    sbatch --job-name=$JOB_NAME --output="${JOB_NAME}.out" --error="${JOB_NAME}.err" bc_training.slurm $MODEL_TYPE $i $BC_DATA $EXP_ID
 done
