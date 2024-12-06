@@ -2,7 +2,7 @@
 # bash script to sbatch multiple agents worth of bc_training
 
 if [ "$#" -ne 5 ]; then
-  echo "Usage: ./unsupervised_multi_agent.sh <start_index> <number_of_times> <model_type> <bc_data> <exp_id>"
+  echo "Usage: batch_bc_agents.sh <start_index> <number_of_times> <model_type> <bc_data> <exp_id>"
   exit 1
 fi
 

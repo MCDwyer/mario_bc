@@ -11,7 +11,7 @@ from stable_baselines3.common.monitor import Monitor
 import json
 import sys
 import time
-import psutil
+# import psutil
 import os
 
 import behavioural_cloning
@@ -264,11 +264,11 @@ if __name__ == "__main__":
 
     main(agent_index)
 
-    end_time = time.time()
+    # end_time = time.time()
 
-    # Get memory usage
-    process = psutil.Process(os.getpid())
-    memory_usage = process.memory_info().rss / (1024 * 1024)  # Convert to MB
+    # # Get memory usage
+    # process = psutil.Process(os.getpid())
+    # memory_usage = process.memory_info().rss / (1024 * 1024)  # Convert to MB
 
-    print(f"Runtime: {end_time - start_time} seconds")
-    print(f"Memory Usage: {memory_usage:.2f} MB")
+    # print(f"Runtime: {end_time - start_time} seconds")
+    # print(f"Memory Usage: {memory_usage:.2f} MB")
