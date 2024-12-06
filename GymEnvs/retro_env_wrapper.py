@@ -24,6 +24,7 @@ NO_CHANGE = "No Change"
 TRAINING_LEVELS = ["Level1-1", "Level2-1", "Level4-1", "Level5-1", "Level6-1", "Level8-1"]
 TEST_LEVELS = ["Level3-1", "Level7-1"]
 
+UNPROCESSED_OBS = "unprocessed"
 
 class DiscreteToBoxWrapper(gym.ActionWrapper):
     def __init__(self, env):
@@ -40,49 +41,6 @@ class DiscreteToBoxWrapper(gym.ActionWrapper):
         # Convert the discrete action back to the continuous space
         return np.array([self.continuous_actions[action]], dtype=np.float32)
 
-# def continuous_to_discrete(action, action_space):
-#     """
-#     Convert continuous action (from Box space) to a discrete action (for Discrete space).
-
-#     Parameters:
-#     - action (float or np.ndarray): The continuous action from the Box space (e.g., in [-1, 1]).
-#     - action_space (gym.spaces.Discrete): The original discrete action space (e.g., Discrete(12)).
-
-#     Returns:
-#     - int: The corresponding discrete action.
-#     """
-#     assert isinstance(action_space, spaces.Discrete), "Target action space must be Discrete."
-
-#     # Number of discrete actions
-#     num_discrete_actions = action_space.n
-
-#     # Scale the continuous action (assuming [-1, 1] range) to the range of discrete actions
-#     # E.g., [-1, 1] -> [0, num_discrete_actions - 1]
-#     discrete_action = int(np.clip((action + 1) / 2 * (num_discrete_actions - 1), 0, num_discrete_actions - 1))
-
-#     return discrete_action
-
-# def discrete_to_continuous(discrete_action, action_space):
-#     """
-#     Convert a discrete action to a corresponding continuous action in Box space.
-
-#     Parameters:
-#     - discrete_action (int): The discrete action (e.g., in [0, 11] for Discrete(12)).
-#     - action_space (gym.spaces.Box): The continuous action space (e.g., Box(-1, 1, (1,))).
-
-#     Returns:
-#     - float or np.ndarray: The corresponding continuous action.
-#     """
-#     assert isinstance(action_space, spaces.Box), "Target action space must be Box."
-    
-#     # Number of discrete actions (e.g., Discrete(12) means actions [0, 11])
-#     num_discrete_actions = action_space.shape[0]
-
-#     # Scale the discrete action [0, num_discrete_actions - 1] to the continuous range [-1, 1]
-#     continuous_action = (discrete_action / (num_discrete_actions - 1)) * 2 - 1
-
-#     return continuous_action
-
 class MarioEnv(gym.Env):
     def __init__(self):
         super(MarioEnv, self).__init__()
@@ -91,6 +49,7 @@ class MarioEnv(gym.Env):
         self.record_option = ""
         self.level = "Level1-1"
         self._use_training_levels = True
+        self.unprocessed_obs = False
 
         self.level_change_type = RANDOM#NO_CHANGE
         self.num_episodes_since_change = 0
@@ -203,12 +162,14 @@ class MarioEnv(gym.Env):
                 level = options["level"]
             if "record_option" in options:
                 record_option = options["record_option"]
+            if UNPROCESSED_OBS in options:
+                extra_info = {"unprocessed_obs": obs}
+                self.unprocessed_obs = True
 
         self.retro_env, obs = self.initialise_retro_env(level, record_option)
 
-        # obs = self.retro_env.reset()
-
         self.state = self.process_observation(obs)
+
         self.horizontal_position = 40 # I think this is what it should start as?
         self.done = False
         self.episode_cumulative_reward = 0
@@ -283,6 +244,9 @@ class MarioEnv(gym.Env):
 
         self.timesteps += 1
         self.state = self.process_observation(obs)
+
+        if self.unprocessed_obs:
+            info[UNPROCESSED_OBS] = obs
 
         reward = self.horizontal_reward(info, state_change)
         self.episode_cumulative_reward += reward
