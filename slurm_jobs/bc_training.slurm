@@ -3,8 +3,17 @@
 # Slurm script
 # m.dwyer@soton.ac.uk
 #=============================================
+# Parameters to run training
+MODEL_TYPE=$1
+AGENT_INDEX=$2
+BC_DATA=$3
+EXP_ID=$4
+
+JOB_NAME="BC_TRAINING_$MODEL_TYPE_$BC_DATA_$AGENT_INDEX_$EXP_ID"
+
+#=============================================
 # Slurm batch parameters
-#SBATCH --job-name=BC_TRAINING
+#SBATCH --job-name=$JOB_NAME
 #SBATCH --mail-type=ALL
 #SBATCH --mail-user=m.dwyer@soton.ac.uk
 #SBATCH --time=60:00:00
@@ -13,14 +22,10 @@
 #SBATCH --ntasks=4 # number of cores
 #SBATCH --nodes=1  # Number of nodes - keep nodes to minimum to avoid overheads for data transfer between nodes
 #SBATCH --mem=40G
+#SBATCH --output=$JOB_NAME.out
+#SBATCH --error=$JOB_NAME.err
 #=============================================
 # Actual run commands
-
-# Parameters to run training
-MODEL_TYPE=$1
-AGENT_INDEX=$2
-BC_DATA=$3
-EXP_ID=$4
 
 export CUDA_VISIBLE_DEVICES=""
 
