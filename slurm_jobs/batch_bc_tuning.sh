@@ -14,5 +14,5 @@ BC_DATA_OPTIONS="amalgam expert_distance nonexpert_distance"
 # Iterate over the list
 for item in $BC_DATA_OPTIONS; do
     JOB_NAME="BC_TUNING_${item}_${MODEL_TYPE}"
-    sbatch --job-name=$JOB_NAME --output="${JOB_NAME}.out" --error="${JOB_NAME}.err" bc_tuning.slurm ${item} ${MODEL_TYPE}
+    sbatch --job-name=$JOB_NAME --output="${JOB_NAME}.out" --error="${JOB_NAME}.err" bc_tuning.slurm $MODEL_TYPE $item
 done
