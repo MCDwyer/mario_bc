@@ -4,7 +4,6 @@
 # m.dwyer@soton.ac.uk
 #=============================================
 # Slurm batch parameters
-#SBATCH --job-name=BC_TUNING
 #SBATCH --mail-type=ALL
 #SBATCH --mail-user=m.dwyer@soton.ac.uk
 #SBATCH --time=60:00:00
