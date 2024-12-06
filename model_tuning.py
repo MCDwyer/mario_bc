@@ -12,15 +12,6 @@ import sys
 
 TUNING_FILEPATH = "model_tuning_outputs/"
 
-# TRAINING_FILEPATH_PREFIX = "/Users/mdwyer/Documents/Code/PhD_Mario_Work/mario_bc/user_data_processed_for_bc/"
-
-# TRAINING_DATA_NAME = "amalgam"
-# TRAINING_DATA_NAME = "expert_distance"
-# TRAINING_DATA_NAME = "nonexpert_distance"
-
-# TRAINING_FILEPATH = TRAINING_FILEPATH_PREFIX + TRAINING_DATA_NAME + "_bc_data.obj"
-
-
 def make_env(env_id):
     def _init():
         env = gym.make(env_id)
@@ -52,23 +43,23 @@ def objective(trial):
 
     else:
         try:
+            rl_learning_rate = trial.suggest_float('rl_learning_rate', 1e-5, 1e-3, log=True)
+            rl_batch_size = trial.suggest_categorical('rl_batch_size', [32, 64, 128, 256, 512, 1024])
+            # Frame stacking
+            n_stack = trial.suggest_categorical('n_stack', [1, 2, 4])
+
+            env = Monitor(env)
+            env = DummyVecEnv([lambda: env])
+
+            # Stack frames to allow temporal information to be captured
+            env = VecFrameStack(env, n_stack=n_stack)
+
             if MODEL_CLASS == PPO:
                 # Hyperparameters to tune
-                rl_learning_rate = trial.suggest_float('rl_learning_rate', 1e-5, 1e-3, log=True)
-                rl_batch_size = trial.suggest_categorical('rl_batch_size', [128, 256, 512])
                 clip_range = trial.suggest_float('clip_range', 0.1, 0.4)
                 rl_n_epochs = trial.suggest_int('rl_n_epochs', 3, 10)
                 gamma = trial.suggest_float('gamma', 0.9, 0.9999)
                 gae_lambda = trial.suggest_float('gae_lambda', 0.9, 1.0)
-
-                # Frame stacking
-                n_stack = trial.suggest_categorical('n_stack', [1, 2, 4])
-
-                env = Monitor(env)
-                env = DummyVecEnv([lambda: env])
-
-                # Stack frames to allow temporal information to be captured
-                env = VecFrameStack(env, n_stack=n_stack)
 
                 # Create the PPO model with CnnPolicy
                 model = PPO('CnnPolicy', env,
@@ -78,36 +69,16 @@ def objective(trial):
                             n_epochs=rl_n_epochs,
                             gamma=gamma,
                             gae_lambda=gae_lambda,
-                            # policy_kwargs=dict(
-                            #     features_extractor_kwargs=dict(
-                            #         net_arch=cnn_arch
-                            #     )
-                            # ),
-                            verbose=0)
+                            verbose=0
+                            )
+                
             elif MODEL_CLASS == DQN:
                 # DQN hyperparameters to tune
-                rl_learning_rate = trial.suggest_float('rl_learning_rate', 1e-5, 1e-3, log=True)
-                rl_batch_size = trial.suggest_categorical('rl_batch_size', [32, 64, 128, 256])
                 buffer_size = trial.suggest_int('buffer_size', 50000, 1000000)
                 target_update_interval = trial.suggest_int('target_update_interval', 1000, 10000)
                 exploration_initial_eps = trial.suggest_float('exploration_initial_eps', 0.1, 1.0)
                 exploration_final_eps = trial.suggest_float('exploration_final_eps', 0.01, 0.1)
                 exploration_fraction = trial.suggest_float('exploration_fraction', 0.01, 0.5)
-                
-                # CNN architecture: list of tuples (filters, kernel_size, stride)
-                # cnn_arch = trial.suggest_categorical('cnn_arch', [
-                #     [(32, 8, 4), (64, 4, 2), (64, 3, 1)],
-                #     [(16, 8, 4), (32, 4, 2)]
-                # ])
-
-                # Frame stacking (important for Atari-like environments)
-                n_stack = trial.suggest_categorical('n_stack', [1, 2, 4])
-
-                env = Monitor(env)
-                env = DummyVecEnv([lambda: env])
-
-                # Stack frames to allow temporal information to be captured
-                env = VecFrameStack(env, n_stack=n_stack)
 
                 # Create the DQN model with CnnPolicy
                 model = DQN('CnnPolicy', env,
@@ -118,36 +89,13 @@ def objective(trial):
                             exploration_initial_eps=exploration_initial_eps,
                             exploration_final_eps=exploration_final_eps,
                             exploration_fraction=exploration_fraction,
-                            # policy_kwargs=dict(
-                            #     features_extractor_kwargs=dict(
-                            #         net_arch=cnn_arch
-                            #     )
-                            # ),
-                            verbose=0)
+                            verbose=0
+                            )
             elif MODEL_CLASS == SAC:
-                rl_learning_rate = trial.suggest_float('rl_learning_rate', 1e-5, 1e-3, log=True)
-                rl_batch_size = trial.suggest_categorical('rl_batch_size', [128, 256, 512, 1024])
-                buffer_size = trial.suggest_int('buffer_size', 100000, 1000000)
+                buffer_size = trial.suggest_int('buffer_size', 50000, 1000000)
                 gamma = trial.suggest_float('gamma', 0.9, 0.9999)
                 tau = trial.suggest_float('tau', 1e-4, 0.005, log=True)
                 learning_starts = trial.suggest_int('learning_starts', 1000, 20000)
-
-                # CNN architecture: list of tuples (filters, kernel_size, stride)
-                # cnn_arch = trial.suggest_categorical('cnn_arch', [
-                #     [(32, 8, 4), (64, 4, 2), (64, 3, 1)],
-                #     [(16, 8, 4), (32, 4, 2)]
-                # ])
-
-                # Frame stacking
-                n_stack = trial.suggest_categorical('n_stack', [1, 2, 4])
-
-                env = DiscreteToBoxWrapper(env)
-
-                env = Monitor(env)
-                env = DummyVecEnv([lambda: env])
-
-                # Stack frames to allow temporal information to be captured
-                env = VecFrameStack(env, n_stack=n_stack)
 
                 # Create the SAC model with CnnPolicy
                 model = SAC('CnnPolicy', env,
@@ -156,17 +104,10 @@ def objective(trial):
                     buffer_size=buffer_size,
                     gamma=gamma,
                     tau=tau,
-                    # policy_kwargs=dict(
-                    #     features_extractor_kwargs=dict(
-                    #         net_arch=cnn_arch
-                    #     )
-                    # ),
                     learning_starts=learning_starts,
-                    verbose=0)
+                    verbose=0
+                    )
 
-    # except Exception as err:
-    #     print(f"Unexpected {err}, {type(err)}")
-    #     raise
         except ValueError as err:
             print(err)
             return -10000
@@ -221,8 +162,18 @@ def evaluate_model(model, env, n_episodes=1000):
 def run_study(filepath):
 
     print("Tuning starting")
+    # Resume the study
+    study = optuna.create_study(
+        direction='maximize',
+        study_name=STUDY_NAME,
+        storage=f"sqlite:///{STUDY_NAME}.db",
+        load_if_exists=True
+    )
+
+    # Continue optimizing
+    study.optimize(objective, n_trials=100)
+
     study = optuna.create_study(direction='maximize')
-    study.optimize(objective, n_trials=1000, n_jobs=1)
 
     print('Best trial:')
     trial = study.best_trial
@@ -261,7 +212,7 @@ def run_study(filepath):
 
 if __name__ == "__main__":
     if len(sys.argv) != 3:
-        print("Usage: python unsupervised_training.py <training_data_name> <model>")
+        print("Usage: python model_tuning.py <training_data_name> <model>")
         sys.exit(1)
 
     # Define the environment
@@ -285,6 +236,10 @@ if __name__ == "__main__":
 
     TRAINING_FILEPATH = "user_data_processed_for_bc/"
     TRAINING_FILEPATH += TRAINING_DATA_NAME + "_bc_data.obj"
+
+    # type, data, model
+    STUDY_NAME = f"bc_tuning_{TRAINING_DATA_NAME}" if USE_BC else "unsupervised_tuning"
+    STUDY_NAME += f"_{MODEL_NAME}"
 
     if USE_BC:
         filepath = TUNING_FILEPATH + f"{MODEL_NAME}_supervised_{TRAINING_DATA_NAME}_"
