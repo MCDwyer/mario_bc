@@ -1,7 +1,7 @@
 #!/bin/bash
 # bash script to sbatch bc tuning
 
-if [ "$#" -ne 2 ]; then
+if [ "$#" -ne 1 ]; then
   echo "Usage: batch_bc_tuning.sh <model_type>"
   exit 1
 fi
