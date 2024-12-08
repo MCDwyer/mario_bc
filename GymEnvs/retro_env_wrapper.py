@@ -50,6 +50,9 @@ class MarioEnv(gym.Env):
         self.level = "Level1-1"
         self._use_training_levels = True
         self.unprocessed_obs = False
+        self._n_stack = 1
+
+        self.stacked_obs = []
 
         self.level_change_type = RANDOM#NO_CHANGE
         self.num_episodes_since_change = 0
@@ -75,7 +78,17 @@ class MarioEnv(gym.Env):
         self.action_space = spaces.Discrete(13)
 
         # Example: observation space with continuous values between 0 and 1
-        self.observation_space = gym.spaces.Box(low=0, high=255, shape=(84, 84, 1), dtype=np.uint8) # greyscale 84x84??
+        self.observation_space = gym.spaces.Box(low=0, high=255, shape=(84, 84, self.n_stack), dtype=np.uint8) # greyscale 84x84??
+
+    @property
+    def n_stack(self):
+        return self._n_stack
+    
+    @n_stack.setter
+    def n_stack(self, value):
+        self._n_stack = value
+        self.observation_space = gym.spaces.Box(low=0, high=255, shape=(84, 84, value), dtype=np.uint8) # greyscale 84x84??
+
 
     # def __getstate__(self):
     #     state = self.__dict__.copy()
@@ -152,7 +165,7 @@ class MarioEnv(gym.Env):
         # obs = np.transpose(obs, (0, 3, 1, 2))
         return obs
 
-    def reset(self, seed=None, options=None):
+    def reset(self, *, seed=None, options=None):
 
         level = None
         record_option = None
@@ -169,6 +182,7 @@ class MarioEnv(gym.Env):
         self.retro_env, obs = self.initialise_retro_env(level, record_option)
 
         self.state = self.process_observation(obs)
+        self.stacked_obs = []
 
         self.horizontal_position = 40 # I think this is what it should start as?
         self.done = False
@@ -260,7 +274,18 @@ class MarioEnv(gym.Env):
             self.history.append({'epsiode_num': self.num_episodes_since_change, 'level': copy.deepcopy(self.level), 'reward': reward, 'episode_cumulative_reward': self.episode_cumulative_reward, 'num_timesteps': self.timesteps})
             self.num_episodes_since_change += 1
 
-        return self.state, reward, self.done, False, info
+        if self.n_stack > 1:
+            self.stacked_obs.append(self.state)
+
+            if len(self.stacked_obs) > self.n_stack:
+                self.stacked_obs.pop(0)
+            else:
+                while len(self.stacked_obs) < self.n_stack:
+                    self.stacked_obs.append(self.state)
+
+        state = self.state if self.n_stack == 1 else np.array(self.stacked_obs)
+
+        return state, reward, self.done, False, info
 
     def render(self):
         pass

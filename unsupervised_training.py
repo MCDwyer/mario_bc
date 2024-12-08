@@ -6,8 +6,8 @@ import matplotlib.pyplot as plt
 import matplotlib.animation as animation
 from stable_baselines3.common.callbacks import EvalCallback, CheckpointCallback
 from stable_baselines3.common.logger import configure
-from stable_baselines3.common.vec_env import DummyVecEnv, VecFrameStack
 from stable_baselines3.common.monitor import Monitor
+from GymEnvs.retro_env_wrapper import DiscreteToBoxWrapper
 import json
 import sys
 import time
@@ -148,14 +148,13 @@ def main(agent_index):
 
     env = gym.make('MarioEnv-v0')
 
-    env = Monitor(env)
-    env = DummyVecEnv([lambda: env])
-
     if MODEL_PARAMETERS:
-        env = VecFrameStack(env, n_stack=MODEL_PARAMETERS['n_stack'])
-    else:
-        # Stack frames to allow temporal information to be captured
-        env = VecFrameStack(env, n_stack=1)
+        env.n_stack = MODEL_PARAMETERS['n_stack']
+
+    if MODEL_NAME == 'SAC':
+        env = DiscreteToBoxWrapper(env)
+
+    env = Monitor(env)
 
     string_timesteps = f"{int(TIMESTEPS/1000000)}M"
 
@@ -169,7 +168,7 @@ def main(agent_index):
         model = MODEL_CLASS(POLICY, env, verbose=1, tensorboard_log=log_dir)
 
         if not UNSUPERVISED:
-            bc_model_path = f"{model_path}_bc_only"
+            bc_model_path = f"{model_path}_bc_only.zip"
 
             # check if bc_model exists
             if os.path.exists(model_path):
