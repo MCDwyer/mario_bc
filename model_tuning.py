@@ -4,8 +4,6 @@ from stable_baselines3 import PPO, DQN, SAC
 from gymnasium.envs.registration import register
 import time
 import numpy as np
-from gymnasium.wrappers.frame_stack import FrameStack
-from stable_baselines3.common.vec_env import DummyVecEnv, VecFrameStack
 from stable_baselines3.common.monitor import Monitor
 import behavioural_cloning
 from GymEnvs.retro_env_wrapper import DiscreteToBoxWrapper
@@ -27,29 +25,33 @@ def objective(trial):
 
     env.reset()
 
+    n_stack = 1
+    
     if USE_BC:
         # Suggest hyperparameters
         learning_rate = trial.suggest_float('learning_rate', 1e-5, 1e-2, log=True)
         num_epochs = trial.suggest_categorical('n_epochs', [5, 10, 15, 20, 25, 50, 100, 200, 500])
         batch_size = trial.suggest_categorical('batch_size', [32, 64, 128, 256, 512, 1024, 2048])
 
-        # Frame stacking
-        n_stack = trial.suggest_categorical('n_stack', [1, 2, 4])
+        # # Frame stacking
+        # n_stack = trial.suggest_categorical('n_stack', [1, 2, 4])
 
-        env.n_stack = n_stack
+        # env.n_stack = n_stack
+
         if MODEL_NAME == 'SAC':
             env = DiscreteToBoxWrapper(env)
 
         env = Monitor(env)
         model = MODEL_CLASS('CnnPolicy', env)
 
+    else:
         try:
             rl_learning_rate = trial.suggest_float('rl_learning_rate', 1e-5, 1e-3, log=True)
             rl_batch_size = trial.suggest_categorical('rl_batch_size', [32, 64, 128, 256, 512, 1024])
-            # Frame stacking
-            n_stack = trial.suggest_categorical('n_stack', [1, 2, 4])
+            # # Frame stacking
+            # n_stack = trial.suggest_categorical('n_stack', [1, 2, 4])
 
-            env.n_stack = n_stack
+            # env.n_stack = n_stack
 
             if MODEL_CLASS == PPO:
                 env = Monitor(env)
@@ -242,8 +244,7 @@ if __name__ == "__main__":
     TRAINING_FILEPATH += TRAINING_DATA_NAME + "_bc_data.obj"
 
     # type, data, model
-    STUDY_NAME = f"bc_tuning_{TRAINING_DATA_NAME}" if USE_BC else "unsupervised_tuning"
-    STUDY_NAME += f"_{MODEL_NAME}"
+    STUDY_NAME = f"bc_tuning_{TRAINING_DATA_NAME}_{MODEL_NAME}" if USE_BC else f"unsupervised_tuning_{MODEL_NAME}"
 
     if USE_BC:
         filepath = TUNING_FILEPATH + f"{MODEL_NAME}_supervised_{TRAINING_DATA_NAME}_"
