@@ -89,7 +89,6 @@ class MarioEnv(gym.Env):
         self._n_stack = value
         self.observation_space = gym.spaces.Box(low=0, high=255, shape=(84, 84, value), dtype=np.uint8) # greyscale 84x84??
 
-
     # def __getstate__(self):
     #     state = self.__dict__.copy()
     #     del state['em']  # Remove the emulator instance since it can't be pickled
