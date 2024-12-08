@@ -37,9 +37,12 @@ def objective(trial):
         n_stack = trial.suggest_categorical('n_stack', [1, 2, 4])
 
         env.n_stack = n_stack
-        model = PPO('CnnPolicy', env)
+        if MODEL_NAME == 'SAC':
+            env = DiscreteToBoxWrapper(env)
 
-    else:
+        env = Monitor(env)
+        model = MODEL_CLASS('CnnPolicy', env)
+
         try:
             rl_learning_rate = trial.suggest_float('rl_learning_rate', 1e-5, 1e-3, log=True)
             rl_batch_size = trial.suggest_categorical('rl_batch_size', [32, 64, 128, 256, 512, 1024])
@@ -92,7 +95,7 @@ def objective(trial):
             elif MODEL_CLASS == SAC:
                 env = DiscreteToBoxWrapper(env)
                 env = Monitor(env)
-                
+
                 buffer_size = trial.suggest_int('buffer_size', 50000, 1000000)
                 gamma = trial.suggest_float('gamma', 0.9, 0.9999)
                 tau = trial.suggest_float('tau', 1e-4, 0.005, log=True)
