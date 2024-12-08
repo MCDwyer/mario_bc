@@ -19,6 +19,7 @@ conda run -n mario_bc_env pip install scipy==1.7.3
 conda run -n mario_bc_env pip install gym==0.25.2
 conda run -n mario_bc_env pip install gym-retro==0.8.0
 conda run -n mario_bc_env pip install kaleido==0.2.1
+conda run -n mario_bc_env pip install tensorflow==2.11.0
 
 # import nes roms
 conda run -n mario_bc_env python -m retro.import "./NES_ROMS/"
