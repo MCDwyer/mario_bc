@@ -4,6 +4,7 @@ from stable_baselines3 import PPO, DQN, SAC
 from gymnasium.envs.registration import register
 import time
 import numpy as np
+from gymnasium.wrappers.frame_stack import FrameStack
 from stable_baselines3.common.vec_env import DummyVecEnv, VecFrameStack
 from stable_baselines3.common.monitor import Monitor
 import behavioural_cloning
@@ -35,10 +36,7 @@ def objective(trial):
         # Frame stacking
         n_stack = trial.suggest_categorical('n_stack', [1, 2, 4])
 
-        env = Monitor(env)
-        env = DummyVecEnv([lambda: env])
-
-        env = VecFrameStack(env, n_stack=n_stack)
+        env.n_stack = n_stack
         model = PPO('CnnPolicy', env)
 
     else:
@@ -48,12 +46,10 @@ def objective(trial):
             # Frame stacking
             n_stack = trial.suggest_categorical('n_stack', [1, 2, 4])
 
+            env.n_stack = n_stack
+
             if MODEL_CLASS == PPO:
                 env = Monitor(env)
-                env = DummyVecEnv([lambda: env])
-
-                # Stack frames to allow temporal information to be captured
-                env = VecFrameStack(env, n_stack=n_stack)
 
                 # Hyperparameters to tune
                 clip_range = trial.suggest_float('clip_range', 0.1, 0.4)
@@ -74,10 +70,6 @@ def objective(trial):
                 
             elif MODEL_CLASS == DQN:
                 env = Monitor(env)
-                env = DummyVecEnv([lambda: env])
-
-                # Stack frames to allow temporal information to be captured
-                env = VecFrameStack(env, n_stack=n_stack)
 
                 # DQN hyperparameters to tune
                 buffer_size = trial.suggest_int('buffer_size', 50000, 1000000)
@@ -100,10 +92,7 @@ def objective(trial):
             elif MODEL_CLASS == SAC:
                 env = DiscreteToBoxWrapper(env)
                 env = Monitor(env)
-                env = DummyVecEnv([lambda: env])
-
-                # Stack frames to allow temporal information to be captured
-                env = VecFrameStack(env, n_stack=n_stack)
+                
                 buffer_size = trial.suggest_int('buffer_size', 50000, 1000000)
                 gamma = trial.suggest_float('gamma', 0.9, 0.9999)
                 tau = trial.suggest_float('tau', 1e-4, 0.005, log=True)
