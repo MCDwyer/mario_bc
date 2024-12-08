@@ -9,7 +9,7 @@
 #SBATCH --time=60:00:00
 #SBATCH --partition=ecsall
 #SBATCH --account=ecsstaff
-#SBATCH --ntasks=64 # number of cores
+#SBATCH --ntasks=8 # number of cores
 #SBATCH --nodes=1  # Number of nodes - keep nodes to minimum to avoid overheads for data transfer between nodes
 #SBATCH --mem=10G
 #=============================================
