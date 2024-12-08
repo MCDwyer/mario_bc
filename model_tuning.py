@@ -48,13 +48,13 @@ def objective(trial):
             # Frame stacking
             n_stack = trial.suggest_categorical('n_stack', [1, 2, 4])
 
-            env = Monitor(env)
-            env = DummyVecEnv([lambda: env])
-
-            # Stack frames to allow temporal information to be captured
-            env = VecFrameStack(env, n_stack=n_stack)
-
             if MODEL_CLASS == PPO:
+                env = Monitor(env)
+                env = DummyVecEnv([lambda: env])
+
+                # Stack frames to allow temporal information to be captured
+                env = VecFrameStack(env, n_stack=n_stack)
+
                 # Hyperparameters to tune
                 clip_range = trial.suggest_float('clip_range', 0.1, 0.4)
                 rl_n_epochs = trial.suggest_int('rl_n_epochs', 3, 10)
@@ -73,6 +73,12 @@ def objective(trial):
                             )
                 
             elif MODEL_CLASS == DQN:
+                env = Monitor(env)
+                env = DummyVecEnv([lambda: env])
+
+                # Stack frames to allow temporal information to be captured
+                env = VecFrameStack(env, n_stack=n_stack)
+
                 # DQN hyperparameters to tune
                 buffer_size = trial.suggest_int('buffer_size', 50000, 1000000)
                 target_update_interval = trial.suggest_int('target_update_interval', 1000, 10000)
@@ -92,6 +98,12 @@ def objective(trial):
                             verbose=0
                             )
             elif MODEL_CLASS == SAC:
+                env = DiscreteToBoxWrapper(env)
+                env = Monitor(env)
+                env = DummyVecEnv([lambda: env])
+
+                # Stack frames to allow temporal information to be captured
+                env = VecFrameStack(env, n_stack=n_stack)
                 buffer_size = trial.suggest_int('buffer_size', 50000, 1000000)
                 gamma = trial.suggest_float('gamma', 0.9, 0.9999)
                 tau = trial.suggest_float('tau', 1e-4, 0.005, log=True)
