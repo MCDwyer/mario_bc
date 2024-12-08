@@ -7,16 +7,14 @@
 #SBATCH --mail-type=ALL
 #SBATCH --mail-user=m.dwyer@soton.ac.uk
 #SBATCH --time=60:00:00
-#SBATCH --ntasks=4 # number of cores
+#SBATCH --ntasks=32 # number of cores
 #SBATCH --nodes=1  # Number of nodes - keep nodes to minimum to avoid overheads for data transfer between nodes
-#SBATCH --mem=40G
+#SBATCH --mem=10G
 #=============================================
 # Actual run commands
 
 MODEL_TYPE=$1
-AGENT_INDEX=$2
-BC_DATA=$3
-EXP_ID=$4
+BC_DATA=$2
 
 export CUDA_VISIBLE_DEVICES=""
 
@@ -24,4 +22,4 @@ cd /scratch/mcd2g19/mario_bc
 
 source activate /home/mcd2g19/.conda/envs/mario_bc_env
 
-python -u unsupervised_training.py $AGENT_INDEX $BC_DATA $MODEL_TYPE $EXP_ID
+python -u model_tuning.py $BC_DATA $MODEL_TYPE
