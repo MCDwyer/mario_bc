@@ -26,7 +26,7 @@ def objective(trial):
     env.reset()
 
     n_stack = 1
-    
+
     if USE_BC:
         # Suggest hyperparameters
         learning_rate = trial.suggest_float('learning_rate', 1e-5, 1e-2, log=True)
@@ -134,7 +134,7 @@ def objective(trial):
 
     start_time = time.time()
     # # Train the model for a certain number of timesteps
-    model.learn(total_timesteps=1000000)
+    model.learn(total_timesteps=2000000)
 
     print(f"Took {int(time.time() - start_time)}s to run 10k timesteps.")
     # Evaluate the model
@@ -152,8 +152,8 @@ def evaluate_model(model, env, n_episodes=1000):
     """
     episode_rewards = []
     for _ in range(n_episodes):
-        # obs, _ = env.reset()
-        obs = env.reset()
+        obs, _ = env.reset()
+        # obs = env.reset()
         done = False
         total_reward = 0.0
         while not done:
