@@ -136,7 +136,7 @@ def objective(trial):
     # # Train the model for a certain number of timesteps
     model.learn(total_timesteps=2000000)
 
-    print(f"Took {int(time.time() - start_time)}s to run 10k timesteps.")
+    print(f"Took {int(time.time() - start_time)}s to run 2 million timesteps.")
     # Evaluate the model
     mean_reward, _ = evaluate_model(model, env)
     env.close()
@@ -158,7 +158,7 @@ def evaluate_model(model, env, n_episodes=1000):
         total_reward = 0.0
         while not done:
             action, _states = model.predict(obs)
-            obs, reward, done, info = env.step(action)
+            obs, reward, done, _, info = env.step(action)
             total_reward += reward
         episode_rewards.append(total_reward)
     mean_reward = sum(episode_rewards) / n_episodes

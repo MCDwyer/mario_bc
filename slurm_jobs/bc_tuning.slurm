@@ -7,9 +7,7 @@
 #SBATCH --mail-type=ALL
 #SBATCH --mail-user=m.dwyer@soton.ac.uk
 #SBATCH --time=60:00:00
-#SBATCH --partition=ecsall
-#SBATCH --account=ecsstaff
-#SBATCH --ntasks=4 # number of cores
+#SBATCH --ntasks=32 # number of cores
 #SBATCH --nodes=1  # Number of nodes - keep nodes to minimum to avoid overheads for data transfer between nodes
 #SBATCH --mem=40G
 #=============================================

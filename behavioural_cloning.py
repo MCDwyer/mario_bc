@@ -47,6 +47,8 @@ def pretrain_actor_critic_with_bc(model, actions, observations, lr, num_epochs, 
 
     if compare_params(policy_params_before, policy.state_dict()):
         print("Custom policy weights have been updated.")
+    else:
+        print("Custom policy weights have NOT been updated.")
 
     model.policy.load_state_dict(policy.state_dict())
 
@@ -154,9 +156,6 @@ def load_data(filepath, n_stack=1):
 
     trajectories = np.array(loaded_data, dtype=object)
     # [obs, act, done, next_obs, infos, next_infos]
-
-    print(trajectories[:,0].shape)
-    print(trajectories[:,1].shape)
 
     observations = []
     actions = []

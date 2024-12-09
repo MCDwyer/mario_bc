@@ -17,7 +17,7 @@ import os
 import behavioural_cloning
 
 TIMESTEP_INCREMENT = 1000000
-TIMESTEPS = 10000000
+TIMESTEPS = 20000000
 RETRAINING = False
 POLICY = "CnnPolicy"
 LEVEL_CHANGE = "random"
@@ -148,6 +148,8 @@ def main(agent_index):
 
     env = gym.make('MarioEnv-v0')
 
+    print("Creating env")
+
     if MODEL_PARAMETERS:
         env.n_stack = MODEL_PARAMETERS['n_stack']
 
@@ -161,6 +163,8 @@ def main(agent_index):
     sup_string = "unsupervised" if UNSUPERVISED else f"bc_{TRAINING_DATA_NAME}"
     model_path = model_dir + f"{MODEL_NAME}_{sup_string}_{string_timesteps}_agent_{agent_index}"
 
+    print("Setting up model:\n")
+
     if MODEL_PARAMETERS:
         model = set_model_parameters()
 
@@ -170,9 +174,13 @@ def main(agent_index):
         if not UNSUPERVISED:
             bc_model_path = f"{model_path}_bc_only.zip"
 
+            print(bc_model_path)
+
             # check if bc_model exists
-            if os.path.exists(model_path):
-                model = MODEL_CLASS.load(bc_model_path)
+            if os.path.exists(bc_model_path):
+                print(f"Model file '{bc_model_path}' exists, attempting to load in now:")
+                model = MODEL_CLASS.load(bc_model_path, env, verbose=1, tensorboard_log=log_dir, print_system_info=True)
+
                 print("BC Trained model loaded successfully!")
             else:
                 print(f"Model file '{bc_model_path}' does not exist.")
@@ -192,7 +200,7 @@ def main(agent_index):
     name_prefix = f"{MODEL_NAME}_{string_timesteps}_agent_{agent_index}"
 
     # Configure logging
-    tmp_path = log_dir + f"/{name_prefix}/"
+    tmp_path = log_dir + f"{name_prefix}/"
     new_logger = configure(tmp_path, ["stdout", "csv", "tensorboard"])
     model.set_logger(new_logger)
 
@@ -209,7 +217,8 @@ def main(agent_index):
 
     # Train the model
     # timesteps = TIMESTEP_INCREMENT if RETRAINING else TIMESTEPS
-    model.learn(total_timesteps=TIMESTEPS, callback=[eval_callback, checkpoint_callback])
+    timesteps = TIMESTEPS
+    model.learn(total_timesteps=timesteps, callback=[eval_callback, checkpoint_callback], reset_num_timesteps=False)
     model.save(model_path)
     print(f"Training finished and model saved to {model_path}.")
 
