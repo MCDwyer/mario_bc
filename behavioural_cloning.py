@@ -223,7 +223,7 @@ def behavioural_cloning(model_name, model, env, filepath, model_path, lr=1e-2, n
     print(f"\tNumber of Epochs: {num_epochs}")
     print(f"\tBatch Size: {batch_size}")
     print(f"\tObservation Stack: {n_stack}\n")
-    print(f"Model Parameters (stored on model): {model.policy_kwargs}\n")
+    print(f"Model Parameters (stored on model): {model.get_parameters()}\n")
     print("Model Policy Structure:")
     print(model.policy)
     print()

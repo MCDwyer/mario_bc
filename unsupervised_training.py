@@ -13,12 +13,11 @@ import sys
 import time
 # import psutil
 import os
+import re
 
 import behavioural_cloning
 
-TIMESTEP_INCREMENT = 1000000
 TIMESTEPS = 20000000
-RETRAINING = False
 POLICY = "CnnPolicy"
 LEVEL_CHANGE = "random"
 NUM_ACTIONS = 13
@@ -78,7 +77,7 @@ class ActionDistributionEvalCallback(EvalCallback):
         self.logger.record("eval/action_distribution_histogram", np.array(actions))
 
 def test_ani(env, model, string_timesteps):
-        # Run a 1000 timesteps to generate a gif just as a check measure (not actual evaluation)
+    # Run a 1000 timesteps to generate a gif just as a check measure (not actual evaluation)
     # Create a figure and axis
     fig, ax = plt.subplots()
 
@@ -117,16 +116,30 @@ def test_ani(env, model, string_timesteps):
 
     env.close()
 
-# def ppo_model(env, log_dir):
-
-#     if UNSUPERVISED:
-#         params = {'rl_learning_rate': 0.0004256977228617011, 'n_steps': 3588, 'gamma': 0.9244431355829242, 'gae_lambda': 0.901757161292598, 'ent_coef': 0.007033089897296567, 'clip_range': 0.31361009245800875, 'vf_coef': 0.824772120758773}
-#     else:
-#         params = {'learning_rate': 0.0009422578032986744, 'n_epochs': 15, 'batch_size': 1043, 'rl_learning_rate': 0.00019810071043939884, 'n_steps': 608, 'gamma': 0.9632436461255943, 'gae_lambda': 0.8365664231014514, 'ent_coef': 0.0014620665698483156, 'clip_range': 0.2873084366251664, 'vf_coef': 0.20790175758482327}
-
-
 def set_model_parameters():
     return
+
+def find_largest_steps_file(directory, model_prefix):
+    # Regex pattern to extract the number of steps from the filename
+    pattern = r"_([0-9]+)_steps\.zip$"
+    
+    largest_steps = 0
+    largest_file = None
+
+    # Iterate through all files in the directory
+    for filename in os.listdir(directory):
+        # Check if the file is a zip file and matches the pattern
+        if filename.endswith(".zip") and filename.startswith(model_prefix):
+            match = re.search(pattern, filename)
+            if match:
+                # Extract the number of steps as an integer
+                steps = int(match.group(1))
+                # Update if this file has the largest number of steps
+                if steps > largest_steps:
+                    largest_steps = steps
+                    largest_file = filename
+    
+    return largest_file, largest_steps
 
 def main(agent_index):
 
@@ -191,7 +204,7 @@ def main(agent_index):
     print("RL Training Info")
     print(f"Model: {MODEL_NAME}, BC dataset: {TRAINING_DATA_NAME}, timesteps: {TIMESTEPS}")
     print(f"Model Parameters Used: {MODEL_PARAMETERS}\n")
-    print(f"Model Parameters (stored on model): {model.policy_kwargs}\n")
+    print(f"Model Parameters (stored on model): {model.get_parameters()}\n")
 
     print("Model Policy Structure:")
     print(model.policy)
@@ -215,9 +228,31 @@ def main(agent_index):
     checkpoint_callback = CheckpointCallback(save_freq=SAVE_FREQ, save_path=log_dir,
                                             name_prefix=name_prefix)
 
-    # Train the model
-    # timesteps = TIMESTEP_INCREMENT if RETRAINING else TIMESTEPS
     timesteps = TIMESTEPS
+
+    if os.path.exists(f"{log_dir}{name_prefix}"):
+        # model was training already
+        print("Model is attempting to resume training.")
+
+        model_loaded = False
+
+        # so then we find the most recent model
+        largest_filename, steps = find_largest_steps_file(log_dir, name_prefix)
+        if largest_filename is not None:
+            prev_model_path = log_dir + "/" + largest_filename
+
+            print(f"Attempting to load in model from: {prev_model_path}")
+            try:
+                model = MODEL_CLASS.load(prev_model_path, env, verbose=1, tensorboard_log=log_dir, print_system_info=True)
+                timesteps = TIMESTEPS - steps
+                model_loaded = True
+            except:
+                model_loaded = False
+
+        if not model_loaded:
+            print("Model couldn't be loaded in, so will begin training from 0.")
+
+    # Train the model
     model.learn(total_timesteps=timesteps, callback=[eval_callback, checkpoint_callback], reset_num_timesteps=False)
     model.save(model_path)
     print(f"Training finished and model saved to {model_path}.")
