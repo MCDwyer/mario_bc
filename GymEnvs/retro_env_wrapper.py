@@ -224,14 +224,28 @@ class MarioEnv(gym.Env):
 
         binary_action = [False]*9 # retro_env action space size
 
-        action_mapping = {0: [UP_INDEX], 1: [DOWN_INDEX], 2: [LEFT_INDEX], 3: [RIGHT_INDEX], 4: [JUMP_INDEX], 5: [SHIFT_INDEX], 6: [LEFT_INDEX, JUMP_INDEX], 7: [RIGHT_INDEX, JUMP_INDEX], 8: [LEFT_INDEX, SHIFT_INDEX], 9: [RIGHT_INDEX, SHIFT_INDEX], 10: [LEFT_INDEX, SHIFT_INDEX, JUMP_INDEX], 11: [RIGHT_INDEX, SHIFT_INDEX, JUMP_INDEX], 12: [NO_ACTION]}
+        action_mapping = {
+            0: [UP_INDEX], 
+            1: [DOWN_INDEX], 
+            2: [LEFT_INDEX], 
+            3: [RIGHT_INDEX], 
+            4: [JUMP_INDEX], 
+            5: [SHIFT_INDEX], 
+            6: [LEFT_INDEX, JUMP_INDEX], 
+            7: [RIGHT_INDEX, JUMP_INDEX], 
+            8: [LEFT_INDEX, SHIFT_INDEX], 
+            9: [RIGHT_INDEX, SHIFT_INDEX], 
+            10: [LEFT_INDEX, SHIFT_INDEX, JUMP_INDEX], 
+            11: [RIGHT_INDEX, SHIFT_INDEX, JUMP_INDEX], 
+            12: [NO_ACTION]
+            }
 
         if action == NO_ACTION:
             return binary_action
         else:
-            for index in action_mapping[action]:
-                binary_action[index] = True
-            
+            for index in action_mapping[int(action)]:
+                binary_action[int(index)] = True
+
         return binary_action
 
     def step(self, action):
