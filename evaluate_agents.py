@@ -10,8 +10,7 @@ from scipy.stats import mannwhitneyu, shapiro, levene, ttest_ind, ttest_rel, wil
 import pickle
 import os
 
-TIMESTEP_INCREMENT = 1000000
-TIMESTEPS = 5000000
+TIMESTEPS = 20000000
 UNSUPERVISED = False
 RETRAINING = False
 MODEL_NAME = "PPO"
@@ -36,7 +35,7 @@ ALL_LEVELS = ["Level1-1", "Level2-1", "Level3-1", "Level4-1", "Level5-1", "Level
 TEST_EPISODES = 1000
 AGENT_INDICES = list(range(5))
 
-def evaluate_model(model, env, level, record_path, n_episodes=10):
+def evaluate_model(model, env, level, record_dir, n_episodes=10):
     """
     Evaluates the model by running it in the environment for n_episodes.
     Returns the mean reward over these episodes.
@@ -48,6 +47,9 @@ def evaluate_model(model, env, level, record_path, n_episodes=10):
     total_actions = np.zeros(env.action_space.n)
 
     for i in range(n_episodes):
+        record_path = record_dir + f"/episode_{i}/"
+        os.makedirs(record_path, exist_ok=True)
+
         obs, _ = env.reset(options={"level": level, "record_option": record_path})
         done = False
         total_reward = 0.0
@@ -163,6 +165,37 @@ def four_agent_statistical_tests(agent_1, agent_2, agent_3, agent_4, mean_reward
     print()
     print()
 
+def get_model_results(model_path, model_class, env):
+    eval_dir = model_path.split(".")[0] + "/evaluation/"
+
+    os.makedirs(eval_dir, exist_ok=True)
+
+    model = model_class.load(model_path, env, verbose=1)
+
+    level_results = {}
+
+    for level in ALL_LEVELS:
+        record_path = eval_dir + f"{level}/bk2_files" 
+        os.makedirs(record_path, exist_ok=True)
+
+        print(f"\tEvaluating on {level} for {TEST_EPISODES} episodes.")
+
+        mean_reward, rewards, episode_trajectories, episode_info = evaluate_model(model, env, level, record_path, TEST_EPISODES)
+
+        print(f"\tMean reward is {mean_reward}, bk2 files stored in {record_path}.\n")
+        level_results[level] = {"mean_reward": mean_reward, "episode_data": []}
+        
+        for i, episode_reward in enumerate(rewards):
+            level_results[level]["episode_data"] = {"reward": episode_reward, "trajectory": episode_trajectories[i], "info": episode_info[i]}
+
+    json_filepath = eval_dir + "all_eval_info.json"
+
+    with open(json_filepath, "w") as json_file:
+        print(f"All evaluation information being saved in {json_filepath}.\n")
+        json.dump(level_results, json_file)
+    
+    return level_results
+
 def load_model_get_results(dir_path, string_timesteps, env, level_results, results, agent_index, level, record_path):
     model_path = dir_path + f"{string_timesteps}_{MODEL_NAME}_{agent_index}"
 
@@ -203,6 +236,10 @@ def main():
             id='MarioEnv-v0',
             entry_point='GymEnvs.retro_env_wrapper:MarioEnv',
         )
+
+    env = gym.make('MarioEnv-v0')
+
+    get_model_results(model_path, model_class, env)
 
     log_dir = f"training_logs/level_change_{LEVEL_CHANGE}/"
 
@@ -421,5 +458,39 @@ def main():
     env.close()
 
 
+
+def run_evaluations(saved_model_dir):
+
+    env = gym.make('MarioEnv-v0')
+
+    for filename in os.listdir(saved_model_dir):
+        if filename.endswith(".zip"):
+            model_path = saved_model_dir + filename
+            if "PPO" in filename:
+                model_class = PPO
+            elif "DQN" in filename:
+                model_class = DQN
+            else:
+                model_class = SAC
+            
+            print(f"Evaluating model: {filename}")
+            get_model_results(model_path, model_class, env)
+            print()
+
+
 if __name__ == "__main__":
-    main()
+    if len(sys.argv) != 2:
+        print("USAGE: python evaluate_agents.py <exp ID>")
+        sys.exit(1)
+
+    register(
+            id='MarioEnv-v0',
+            entry_point='GymEnvs.retro_env_wrapper:MarioEnv',
+        )
+
+    EXP_RUN_ID = sys.argv[1]
+
+    saved_model_dir = f"experiments/{EXP_RUN_ID}/saved_models/level_change_random/"
+
+    run_evaluations(saved_model_dir)
+

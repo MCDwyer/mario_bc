@@ -70,7 +70,7 @@ def objective(trial):
                             n_epochs=rl_n_epochs,
                             gamma=gamma,
                             gae_lambda=gae_lambda,
-                            verbose=0
+                            verbose=1
                             )
                 
             elif MODEL_CLASS == DQN:
@@ -92,7 +92,7 @@ def objective(trial):
                             exploration_initial_eps=exploration_initial_eps,
                             exploration_final_eps=exploration_final_eps,
                             exploration_fraction=exploration_fraction,
-                            verbose=0
+                            verbose=1
                             )
             elif MODEL_CLASS == SAC:
                 env = DiscreteToBoxWrapper(env)
@@ -102,6 +102,8 @@ def objective(trial):
                 gamma = trial.suggest_float('gamma', 0.9, 0.9999)
                 tau = trial.suggest_float('tau', 1e-4, 0.005, log=True)
                 learning_starts = trial.suggest_int('learning_starts', 1000, 20000)
+                training_freq = trial.suggest_categorical('training_freq', [1, 5, 10, 50, 100, 500, 1000, 5000])
+                gradient_updates = trial.suggest_categorical('gradient_updates', [1, 5, 10, 50, 100, 500, 1000, 5000])
 
                 # Create the SAC model with CnnPolicy
                 model = SAC('CnnPolicy', env,
@@ -111,7 +113,9 @@ def objective(trial):
                     gamma=gamma,
                     tau=tau,
                     learning_starts=learning_starts,
-                    verbose=0
+                    train_freq=training_freq,
+                    gradient_steps=gradient_updates,
+                    verbose=2
                     )
 
         except ValueError as err:
