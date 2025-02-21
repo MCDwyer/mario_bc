@@ -68,6 +68,7 @@ class MarioEnv(gym.Env):
         self.retro_env, _ = self.initialise_retro_env()
 
         self.horizontal_position = 40
+        self.score = 0
         self.done = False
 
         self.history = []
@@ -79,6 +80,8 @@ class MarioEnv(gym.Env):
 
         # Example: observation space with continuous values between 0 and 1
         self.observation_space = gym.spaces.Box(low=0, high=255, shape=(84, 84, self.n_stack), dtype=np.uint8) # greyscale 84x84??
+
+        self.reward_function = self.combined_reward
 
     @property
     def n_stack(self):
@@ -202,21 +205,49 @@ class MarioEnv(gym.Env):
             return 0 #???           
         
         return reward
-    
-    @staticmethod
-    def reward(info, next_info, state_change):
 
-        current_horizontal_position = next_info["x_frame"]*256 + next_info["x_position_in_frame"]
+    def score_reward(self, info, state_change):
 
-        prev_horizontal_position = info["x_frame"]*256 + info["x_position_in_frame"]
-
-        reward = current_horizontal_position - prev_horizontal_position
+        current_score = info["score"]
+        
+        reward = current_score - self.score
+        
+        self.score = current_score
 
         # player_state == 11 is dying, 5 is level change type bits, 8 is normal play?
         if state_change:
             return 0 #???           
         
         return reward
+
+    def combined_reward(self, info, state_change):
+
+        score_reward_value = self.score_reward(info, state_change)
+
+        horizontal_reward_value = self.horizontal_reward(info, state_change)
+        
+        reward = score_reward_value/2 + horizontal_reward_value/2
+
+        # # player_state == 11 is dying, 5 is level change type bits, 8 is normal play?
+        # if state_change:
+        #     return 0 #???           
+        
+        return reward
+    
+    # @staticmethod
+    # def reward(info, next_info, state_change):
+
+    #     current_horizontal_position = next_info["x_frame"]*256 + next_info["x_position_in_frame"]
+
+    #     prev_horizontal_position = info["x_frame"]*256 + info["x_position_in_frame"]
+
+    #     reward = current_horizontal_position - prev_horizontal_position
+
+    #     # player_state == 11 is dying, 5 is level change type bits, 8 is normal play?
+    #     if state_change:
+    #         return 0 #???           
+        
+    #     return reward
 
 
     def map_to_retro_action(self, action):
@@ -275,7 +306,7 @@ class MarioEnv(gym.Env):
         if self.unprocessed_obs:
             info[UNPROCESSED_OBS] = obs
 
-        reward = self.horizontal_reward(info, state_change)
+        reward = self.reward_function(info, state_change)
         self.episode_cumulative_reward += reward
 
         if info["lives"] != 2: # reset on lives changing to match human demo collection methods
