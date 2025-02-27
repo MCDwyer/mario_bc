@@ -69,6 +69,8 @@ class MarioEnv(gym.Env):
 
         self.horizontal_position = 40
         self.score = 0
+        self.score_reward = 0
+        self.dist_reward = 0
         self.done = False
 
         self.history = []
@@ -81,7 +83,7 @@ class MarioEnv(gym.Env):
         # Example: observation space with continuous values between 0 and 1
         self.observation_space = gym.spaces.Box(low=0, high=255, shape=(84, 84, self.n_stack), dtype=np.uint8) # greyscale 84x84??
 
-        self.reward_function = self.combined_reward
+        self.reward_function = self.score_reward_function
 
     @property
     def n_stack(self):
@@ -187,32 +189,39 @@ class MarioEnv(gym.Env):
         self.stacked_obs = []
 
         self.horizontal_position = 40 # I think this is what it should start as?
+        self.score = 0
         self.done = False
         self.episode_cumulative_reward = 0
+        self.score_reward = 0
+        self.dist_reward = 0
 
         return self.state, {}
-    
-    def horizontal_reward(self, info, state_change):
+
+    def horizontal_reward_function(self, info, state_change):
 
         current_horizontal_position = info["x_frame"]*256 + info["x_position_in_frame"]
         
         reward = current_horizontal_position - self.horizontal_position
-        
-        self.horizontal_position = current_horizontal_position
 
+        # reward = self.difference_reward_calculation(current_horizontal_position, self.horizontal_position)
+        
         # player_state == 11 is dying, 5 is level change type bits, 8 is normal play?
         if state_change:
             return 0 #???           
         
         return reward
 
-    def score_reward(self, info, state_change):
+    # @static
+    # def difference_reward_calculation(current, prev):
+    #     return current - prev
 
-        current_score = info["score"]
+    # @static 
+
+    def score_reward_function(self, info, state_change):
+
+        current_score = info["score"]*10
         
         reward = current_score - self.score
-        
-        self.score = current_score
 
         # player_state == 11 is dying, 5 is level change type bits, 8 is normal play?
         if state_change:
@@ -220,17 +229,20 @@ class MarioEnv(gym.Env):
         
         return reward
 
-    def combined_reward(self, info, state_change):
+    def combined_reward_function(self, info, state_change):
 
-        score_reward_value = self.score_reward(info, state_change)
+        score_reward_value = self.score_reward_function(info, state_change)
 
-        horizontal_reward_value = self.horizontal_reward(info, state_change)
+        horizontal_reward_value = self.horizontal_reward_function(info, state_change)
         
         reward = score_reward_value/2 + horizontal_reward_value/2
 
+        self.score_reward = score_reward_value
+        self.dist_reward = horizontal_reward_value
+
         # # player_state == 11 is dying, 5 is level change type bits, 8 is normal play?
-        # if state_change:
-        #     return 0 #???           
+        if state_change:
+            return 0 #???           
         
         return reward
     
@@ -306,8 +318,15 @@ class MarioEnv(gym.Env):
         if self.unprocessed_obs:
             info[UNPROCESSED_OBS] = obs
 
+
+        # to set the score and dist rewards so that we can track it in eval
+        self.combined_reward_function(info, state_change)
+
         reward = self.reward_function(info, state_change)
         self.episode_cumulative_reward += reward
+
+        self.score = info["score"]*10
+        self.horizontal_position = info["x_frame"]*256 + info["x_position_in_frame"]
 
         if info["lives"] != 2: # reset on lives changing to match human demo collection methods
             done = True
