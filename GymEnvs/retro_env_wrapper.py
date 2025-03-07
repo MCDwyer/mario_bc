@@ -21,6 +21,9 @@ RANDOM = "random"
 CURRICULUM = "Curriculum"
 NO_CHANGE = "No Change"
 
+MAX_SCORE = 1000
+MAX_DISTANCE = 3710
+
 TRAINING_LEVELS = ["Level1-1", "Level2-1", "Level4-1", "Level5-1", "Level6-1", "Level8-1"]
 TEST_LEVELS = ["Level3-1", "Level7-1"]
 
@@ -58,11 +61,15 @@ class MarioEnv(gym.Env):
         self.num_episodes_since_change = 0
         self.all_levels = ["Level1-1", "Level2-1", "Level3-1", "Level4-1", "Level5-1", "Level6-1", "Level7-1", "Level8-1"]
 
+        self.levels_used = {}
+        
+        for level in self.all_levels:
+            self.levels_used[level] = 0
+
         self.levels_to_use = TRAINING_LEVELS
 
         self.curriculum_threshold = None
         self.level_index = 0
-        self.timesteps = 0
 
         # initialise the gym retro_env
         self.retro_env, _ = self.initialise_retro_env()
@@ -73,9 +80,6 @@ class MarioEnv(gym.Env):
         self.dist_reward = 0
         self.done = False
 
-        self.history = []
-        self.episode_cumulative_reward = 0
-
         # Define action and observation space
         # They must be gym.spaces objects
         self.action_space = spaces.Discrete(13)
@@ -83,7 +87,7 @@ class MarioEnv(gym.Env):
         # Example: observation space with continuous values between 0 and 1
         self.observation_space = gym.spaces.Box(low=0, high=255, shape=(84, 84, self.n_stack), dtype=np.uint8) # greyscale 84x84??
 
-        self.reward_function = self.score_reward_function
+        self.reward_function = self.horizontal_reward_function
 
     @property
     def n_stack(self):
@@ -93,15 +97,6 @@ class MarioEnv(gym.Env):
     def n_stack(self, value):
         self._n_stack = value
         self.observation_space = gym.spaces.Box(low=0, high=255, shape=(84, 84, value), dtype=np.uint8) # greyscale 84x84??
-
-    # def __getstate__(self):
-    #     state = self.__dict__.copy()
-    #     del state['em']  # Remove the emulator instance since it can't be pickled
-    #     return state
-
-    # def __setstate__(self, state):
-    #     self.__dict__.update(state)
-    #     self.em = retro.RetroEmulator(self.rom_path)  # Recreate the emulator instance
 
     def change_mode(self):
         if self._use_training_levels:
@@ -129,6 +124,11 @@ class MarioEnv(gym.Env):
                 self.level = self.levels_to_use[level_int]
 
         return self.level
+
+    def change_level_set(self, levels):
+        self.levels_to_use = levels
+        print(f"Using levels: {levels} for this environment set up.")
+        self.retro_env, _ = self.initialise_retro_env()
 
     def initialise_retro_env(self, fixed_level=None, record_option=None):
         if self.retro_env is not None:
@@ -195,72 +195,62 @@ class MarioEnv(gym.Env):
         self.score_reward = 0
         self.dist_reward = 0
 
+        level_name = self.retro_env.statename.split(".")[0] # level.state -> only want the level name
+        self.levels_used[level_name] += 1
+
         return self.state, {}
 
-    def horizontal_reward_function(self, info, state_change):
+    def horizontal_reward_function(self, info, state_change, died):
 
         current_horizontal_position = info["x_frame"]*256 + info["x_position_in_frame"]
         
         reward = current_horizontal_position - self.horizontal_position
 
-        # reward = self.difference_reward_calculation(current_horizontal_position, self.horizontal_position)
+        self.horizontal_position = current_horizontal_position
         
         # player_state == 11 is dying, 5 is level change type bits, 8 is normal play?
-        if state_change:
+        # if died:
+        #     return -4000
+        if not died and state_change:
             return 0 #???           
         
         return reward
 
-    # @static
-    # def difference_reward_calculation(current, prev):
-    #     return current - prev
+    def less_sparse_score_reward_function(self, info, state_change, died):
 
-    # @static 
+        score_reward = self.score_reward_function(info, state_change, died)
 
-    def score_reward_function(self, info, state_change):
+        horizontal_position_reward = self.horizontal_reward_function(info, state_change)
+
+        reward = score_reward + horizontal_position_reward/MAX_DISTANCE
+        
+        return reward
+
+    def score_reward_function(self, info, state_change, died):
 
         current_score = info["score"]*10
-        
+
         reward = current_score - self.score
 
+        self.score = current_score
+
+        if died:
+            reward = 0 - self.score # lose reward if died to match distance method
         # player_state == 11 is dying, 5 is level change type bits, 8 is normal play?
-        if state_change:
-            return 0 #???           
+        elif state_change:
+            return 0 #???
         
         return reward
 
-    def combined_reward_function(self, info, state_change):
+    def combined_reward_function(self, info, state_change, died):
 
-        score_reward_value = self.score_reward_function(info, state_change)
+        score_reward_value = self.score_reward_function(info, state_change, died)
 
-        horizontal_reward_value = self.horizontal_reward_function(info, state_change)
+        horizontal_reward_value = self.horizontal_reward_function(info, state_change, died)
         
-        reward = score_reward_value/2 + horizontal_reward_value/2
+        reward = (score_reward_value/MAX_SCORE)/2 + (horizontal_reward_value/MAX_DISTANCE)/2
 
-        self.score_reward = score_reward_value
-        self.dist_reward = horizontal_reward_value
-
-        # # player_state == 11 is dying, 5 is level change type bits, 8 is normal play?
-        if state_change:
-            return 0 #???           
-        
         return reward
-    
-    # @staticmethod
-    # def reward(info, next_info, state_change):
-
-    #     current_horizontal_position = next_info["x_frame"]*256 + next_info["x_position_in_frame"]
-
-    #     prev_horizontal_position = info["x_frame"]*256 + info["x_position_in_frame"]
-
-    #     reward = current_horizontal_position - prev_horizontal_position
-
-    #     # player_state == 11 is dying, 5 is level change type bits, 8 is normal play?
-    #     if state_change:
-    #         return 0 #???           
-        
-    #     return reward
-
 
     def map_to_retro_action(self, action):
         # this is to map from discrete action space to the retro env space, including the multi-press button options
@@ -303,39 +293,33 @@ class MarioEnv(gym.Env):
                 break
 
         state_change = False
-
+        died = False
+        
         while info["player_state"] != 8:
             # step through the non playable state times?
             obs, rewards, done, info = self.retro_env.step(retro_action)
 
-            if info["player_state"] != 11:
-                state_change = True
-
-
-        self.timesteps += 1
-        self.state = self.process_observation(obs)
-
-        if self.unprocessed_obs:
-            info[UNPROCESSED_OBS] = obs
-
-
-        # to set the score and dist rewards so that we can track it in eval
-        self.combined_reward_function(info, state_change)
-
-        reward = self.reward_function(info, state_change)
-        self.episode_cumulative_reward += reward
-
-        self.score = info["score"]*10
-        self.horizontal_position = info["x_frame"]*256 + info["x_position_in_frame"]
+            state_change = True
+            # player state = 11 only when dying from enemy I think? falling is player_state 0?
+            # if info["player_state"] != 11 and info["player_state"] != 0:
+            #     state_change = True
 
         if info["lives"] != 2: # reset on lives changing to match human demo collection methods
             done = True
+            died = True
+
+        if info["level"] != 0:
+            done = True 
+
+        self.state = self.process_observation(obs)
+
+        reward = self.reward_function(info, state_change, died)
+        self.episode_cumulative_reward += reward
 
         self.done = done
 
-        if self.done:
-            self.history.append({'epsiode_num': self.num_episodes_since_change, 'level': copy.deepcopy(self.level), 'reward': reward, 'episode_cumulative_reward': self.episode_cumulative_reward, 'num_timesteps': self.timesteps})
-            self.num_episodes_since_change += 1
+        if self.unprocessed_obs:
+            info[UNPROCESSED_OBS] = obs
 
         if self.n_stack > 1:
             self.stacked_obs.append(self.state)
