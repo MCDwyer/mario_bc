@@ -209,8 +209,8 @@ class MarioEnv(gym.Env):
         self.horizontal_position = current_horizontal_position
         
         # player_state == 11 is dying, 5 is level change type bits, 8 is normal play?
-        # if died:
-        #     return -4000
+        if died:
+            return -100
         if not died and state_change:
             return 0 #???           
         
