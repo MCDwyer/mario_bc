@@ -6,6 +6,8 @@ import copy
 
 from custom_cnn import CustomActorCriticCnnPolicy
 
+FILEPATH = "bc_datasets/"
+
 def calc_reward(info, next_info, state_change):
 
     current_horizontal_position = next_info["x_frame"]*256 + next_info["x_position_in_frame"]
@@ -45,7 +47,7 @@ def pretrain_actor_critic_with_bc(model, actions, observations, lr, num_epochs, 
 
     policy_params_before = copy.deepcopy(model.policy.state_dict())
 
-    if compare_params(policy_params_before, policy.state_dict()):
+    if not compare_params(policy_params_before, policy.state_dict()):
         print("Custom policy weights have been updated.")
     else:
         print("Custom policy weights have NOT been updated.")
@@ -149,72 +151,104 @@ def pretrain_sac_with_bc(model, actions, observations, lr, num_epochs, batch_siz
 
     return model
 
-def load_data(filepath, n_stack=1):
-    # load in data
-    with open(filepath, 'rb') as file:
-        loaded_data = pickle.load(file)
+def load_data(training_data_name, levels, n_stack=1):
 
-    trajectories = np.array(loaded_data, dtype=object)
-    # [obs, act, done, next_obs, infos, next_infos]
+    all_actions = None
+    all_observations = None
 
-    observations = []
-    actions = []
-    next_observations = []
-    rewards = []
+    for level in levels:
+        full_filepath = f"{FILEPATH}{level}_{training_data_name}.pkl"
 
-    stacked_obs = []
+        with open(full_filepath, 'rb') as file:
+            loaded_data = pickle.load(file)
 
-    # expert_observations = expert_observations.permute(0, 3, 1, 2)  # From [batch, height, width, channels] to [batch, channels, height, width]
+        actions, observations = zip(*loaded_data)
+
+        print(f"Loading {level} demo data from {full_filepath}.")
+
+        if all_actions is None:
+            all_actions = np.array(actions)
+            observations = np.array(observations)
+            observations = observations.reshape(observations.shape[0], observations.shape[3], observations.shape[1], observations.shape[2])
+            all_observations = observations
+
+
+        else:
+            all_actions = np.concatenate((all_actions, np.array(actions)))
+            observations = np.array(observations)
+            observations = observations.reshape(observations.shape[0], observations.shape[3], observations.shape[1], observations.shape[2])
+            all_observations = np.concatenate((all_observations, observations))
     
-    for i, trajectory in enumerate(trajectories):
+    return all_actions, all_observations
 
-        obs = trajectory[0]
-        action = trajectory[1]
-        done = trajectory[2]
-        next_obs = trajectory[3]
-        info = trajectory[4]
-        next_info = trajectory[5]
+# def load_data(filepath, n_stack=1):
+#     # load in data
+#     with open(filepath, 'rb') as file:
+#         loaded_data = pickle.load(file)
 
-        stacked_obs.append(obs)
+#     trajectories = np.array(loaded_data, dtype=object)
+#     # [obs, act, done, next_obs, infos, next_infos]
 
-        if len(stacked_obs) == n_stack:
-            # add stacked_obs to observations
-            stacked_obs_arr = np.array(stacked_obs)
-            stacked_obs_arr = stacked_obs_arr.reshape(n_stack, 84, 84)
+#     observations = []
+#     actions = []
+#     next_observations = []
+#     rewards = []
 
-            observations.append(stacked_obs_arr)
+#     stacked_obs = []
 
-            next_obs_arr = np.array(next_obs)
-            next_obs_arr = next_obs_arr.reshape(1, 84, 84)
-            next_observations.append(next_obs_arr)
+#     # expert_observations = expert_observations.permute(0, 3, 1, 2)  # From [batch, height, width, channels] to [batch, channels, height, width]
+    
+#     for i, trajectory in enumerate(trajectories):
 
-            actions.append(action)
+#         obs = trajectory[0]
+#         action = trajectory[1]
+#         done = trajectory[2]
+#         next_obs = trajectory[3]
+#         info = trajectory[4]
+#         next_info = trajectory[5]
+
+#         stacked_obs.append(obs)
+
+#         if len(stacked_obs) == n_stack:
+#             # add stacked_obs to observations
+#             stacked_obs_arr = np.array(stacked_obs)
+#             stacked_obs_arr = stacked_obs_arr.reshape(n_stack, 84, 84)
+
+#             observations.append(stacked_obs_arr)
+
+#             next_obs_arr = np.array(next_obs)
+#             next_obs_arr = next_obs_arr.reshape(1, 84, 84)
+#             next_observations.append(next_obs_arr)
+
+#             actions.append(action)
             
-            reward = calc_reward(info, next_info, done)
-            rewards.append(reward)
+#             reward = calc_reward(info, next_info, done)
+#             rewards.append(reward)
 
-            if done:
-                # end of attempt
-                stacked_obs = []
+#             if done:
+#                 # end of attempt
+#                 stacked_obs = []
 
-            else:
-                # remove first bit of stacked_obs
-                stacked_obs.pop(0)
+#             else:
+#                 # remove first bit of stacked_obs
+#                 stacked_obs.pop(0)
 
-    # for some reason have to do it this way, otherwise it gets upset
-    observations = np.array(observations)
-    actions = np.array(actions)
-    next_observations = np.array(next_observations)
-    rewards = np.array(rewards)
+#     # for some reason have to do it this way, otherwise it gets upset
+#     observations = np.array(observations)
+#     actions = np.array(actions)
+#     next_observations = np.array(next_observations)
+#     rewards = np.array(rewards)
 
-    return actions, observations, next_observations, rewards
+#     return actions, observations, next_observations, rewards
 
-def behavioural_cloning(model_name, model, env, filepath, model_path, lr=1e-2, num_epochs=10, batch_size=64, n_stack=1):
+def behavioural_cloning(model_name, model, levels, training_data_name, model_path, lr=1e-2, num_epochs=10, batch_size=64, n_stack=1):
 
-    actions, observations, next_observations, rewards = load_data(filepath, n_stack)
+    # actions, observations, next_observations, rewards = load_data(filepath, n_stack)
+
+    actions, observations = load_data(training_data_name, levels, n_stack)
 
     print("BC Training Info")
-    print(f"Model: {model_name}, BC dataset filepath: {filepath}")
+    print(f"Model: {model_name}, BC dataset name: {training_data_name}")
     print("Dataset information:")
     print(f"\tObservations: {observations.shape}")
     print(f"\tActions: {actions.shape}\n")
