@@ -25,6 +25,7 @@ LEVEL_CHANGE = "random"
 NUM_ACTIONS = 13
 ONLY_BC = True
 
+RESUME_TRAINING = True
 EVALUATION_FREQ = 200000
 SAVE_FREQ = 500000
 
@@ -66,6 +67,7 @@ class ActionDistributionEvalCallback(EvalCallback):
         self.action_distributions = []
         self.score_rewards = []
         self.dist_rewards = []
+        self.eval_info = []
 
     def _on_step(self) -> bool:
         # Perform evaluation when eval_freq is met
@@ -77,11 +79,11 @@ class ActionDistributionEvalCallback(EvalCallback):
 
             # Log action distribution to TensorBoard
             self._log_action_distribution(action_distribution)
-            self._log_rewards(score_reward, dist_reward)
+            # self._log_rewards(score_reward, dist_reward)
 
             if self.verbose > 0:
                 print(f"Action distribution during evaluation: {action_distribution}")
-                print(f"Score reward: {score_reward}, Distance reward: {dist_reward}")
+                # print(f"Score reward: {score_reward}, Distance reward: {dist_reward}")
 
         return super(ActionDistributionEvalCallback, self)._on_step()
 
@@ -94,8 +96,8 @@ class ActionDistributionEvalCallback(EvalCallback):
         for _ in range(self.n_eval_episodes):
             obs = self.eval_env.reset()
             done = False
-            episode_score_reward = 0
-            episode_dist_reward = 0
+            # episode_score_reward = 0
+            # episode_dist_reward = 0
 
             while not done:
                 action, _ = self.model.predict(obs, deterministic=False)
@@ -103,11 +105,14 @@ class ActionDistributionEvalCallback(EvalCallback):
                 obs, rewards, done, info = self.eval_env.step(action)
 
                 # Assuming self.score_reward and self.dist_reward are part of `info`
-                episode_score_reward +=  self.eval_env.envs[0].score_reward #self.eval_env.score_reward
-                episode_dist_reward += self.eval_env.envs[0].dist_reward # self.eval_env.dist_reward
+                # episode_score_reward +=  self.eval_env.envs[0].score_reward #self.eval_env.score_reward
+                # episode_dist_reward += self.eval_env.envs[0].dist_reward # self.eval_env.dist_reward
 
-            total_score_reward += episode_score_reward
-            total_dist_reward += episode_dist_reward
+            # total_score_reward += episode_score_reward
+            # total_dist_reward += episode_dist_reward
+            # eval_info_dict = {"score": info["score"], "x_frame": info["x_frame"], "y_frame": info["y_frame"], "x_position_in_frame": info["x_position_in_frame"], "y_position_in_frame": info["y_position_in_frame"], "lives": info["lives"]}
+            # self.eval_info.append(info)
+            print(info)
 
         avg_score_reward = total_score_reward / self.n_eval_episodes
         avg_dist_reward = total_dist_reward / self.n_eval_episodes
@@ -122,13 +127,13 @@ class ActionDistributionEvalCallback(EvalCallback):
         # Log as a histogram (requires flattening the distribution)
         actions = [action for action, count in action_distribution.items() for _ in range(count)]
         self.logger.record("eval/action_distribution_histogram", np.array(actions))
+        # self.logger.record(f"eval/info", self.eval_info)
 
     def _log_rewards(self, score_reward, dist_reward):
         # Log score and distance rewards
         self.logger.record("eval/score_reward", score_reward)
         self.logger.record("eval/dist_reward", dist_reward)
         self.logger.record("eval/combined_reward", ((dist_reward+score_reward)/2))
-
 
 def test_ani(env, model, string_timesteps):
     # Run a 1000 timesteps to generate a gif just as a check measure (not actual evaluation)
@@ -275,6 +280,16 @@ def main(agent_index):
 
     print("Creating env")
 
+    if EXP_RUN_ID[-1].isdigit():
+        # then load the cross validation levels for this index
+        with open(f"cross_validation_levels/index_{EXP_RUN_ID[-1]}.pkl", "rb") as file:
+            levels_to_use = pickle.load(file)
+
+        env.change_level_set(levels_to_use)
+
+        print(f"Cross validation set {EXP_RUN_ID[-1]} used, training levels set to: {levels_to_use}.")
+        print("NOTE TO SELF -> CANT DO CROSS VALIDATION PROPERLY UNTIL BC DATASETS HAVE BEEN CHANGED - OTHERWISE TEST DATA WILL BE IN BC STAGE")
+
     if MODEL_PARAMETERS:
         env.n_stack = MODEL_PARAMETERS['n_stack']
 
@@ -297,7 +312,6 @@ def main(agent_index):
     formatted_date = current_date.strftime("%Y%m%d")
     run_name = f"run_{formatted_date}" 
 
-
     name_prefix = f"{MODEL_NAME}_{string_timesteps}_agent_{agent_index}"
 
     # Configure logging
@@ -317,7 +331,7 @@ def main(agent_index):
         else:
             print(f"Model file '{bc_model_path}' does not exist.")
     
-            model = behavioural_cloning.behavioural_cloning(MODEL_NAME, model, env, TRAINING_FILEPATH, bc_model_path, lr=params["learning_rate"], num_epochs=params["n_epochs"], batch_size=params["batch_size"]) #, params["learning_rate"], params["n_epochs"], params["batch_size"])
+            model = behavioural_cloning.behavioural_cloning(MODEL_NAME, model, env.levels_to_use, TRAINING_DATA_NAME, bc_model_path, lr=params["learning_rate"], num_epochs=params["n_epochs"], batch_size=params["batch_size"]) #, params["learning_rate"], params["n_epochs"], params["batch_size"])
             test_ani(env, model, "post_bc_training")
             if ONLY_BC:
                 sys.exit()
@@ -329,6 +343,8 @@ def main(agent_index):
 
     print(f"\tLearning Rate: {model.learning_rate}")
     print(f"\tBatch Size: {model.batch_size}")
+
+    print(f"\tReward Function: {env.reward_function}")
 
     print("Model Policy Structure:")
     print(model.policy)
@@ -348,7 +364,7 @@ def main(agent_index):
 
     timesteps = TIMESTEPS
 
-    if os.path.exists(f"{log_dir}{name_prefix}"):
+    if RESUME_TRAINING and os.path.exists(f"{log_dir}{name_prefix}"):
         # model was training already
         print("Model is attempting to resume training.")
 
@@ -383,13 +399,7 @@ def main(agent_index):
     model.save(model_path)
     print(f"Training finished and model saved to {model_path}.")
 
-    # save the history from the env
-    history_json_filepath = f"{model_path}.json"
-
-    with open(history_json_filepath, "w") as outfile:
-        json.dump(env.history, outfile)
-
-    # env.set_record_option("test_bk2s/.")
+    print(f"Levels used during training: {env.levels_used}")
 
     # Load the trained agent to check it's saved properly
     model = MODEL_CLASS.load(model_path)
@@ -402,9 +412,6 @@ if __name__ == "__main__":
         print("Usage: python unsupervised_training.py <index_number> <training_data_name> <model>")
         print("OR: python unsupervised_training.py <index_number> <training_data_name> <model> <experiment_run_id>")
         sys.exit(1)
-
-    # Start timing
-    start_time = time.time()
 
     agent_index = sys.argv[1]
     TRAINING_DATA_NAME = sys.argv[2]
@@ -437,12 +444,3 @@ if __name__ == "__main__":
     print(f"Starting training for agent {agent_index} with model type: {MODEL_NAME} and using {TRAINING_DATA_NAME} training data.\n\n")
 
     main(agent_index)
-
-    # end_time = time.time()
-
-    # # Get memory usage
-    # process = psutil.Process(os.getpid())
-    # memory_usage = process.memory_info().rss / (1024 * 1024)  # Convert to MB
-
-    # print(f"Runtime: {end_time - start_time} seconds")
-    # print(f"Memory Usage: {memory_usage:.2f} MB")
