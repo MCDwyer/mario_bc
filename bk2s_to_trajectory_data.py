@@ -112,6 +112,7 @@ def extract_info_from_bk2s(bk2_file, level):
     prev_score = 0
 
     state_change = False
+    death_log = {}
 
     while movie.step():
         keys = []
@@ -121,7 +122,7 @@ def extract_info_from_bk2s(bk2_file, level):
         obs, _, done, info = env.step(keys)
         step += 1
 
-        info = copy.deepcopy(info)
+        # info = copy.deepcopy(info)
 
         if level is None:
             level = info["level"]
@@ -129,13 +130,14 @@ def extract_info_from_bk2s(bk2_file, level):
         if step%4 == 0: # only want every 4 timesteps?
             state_change = False
 
+            # print(info["player_state"])
             last_info = copy.deepcopy(info)
-            death_log = {}
 
             while info["player_state"] != 8:# and info["player_state"] != 11:
                 # keep going as non playable bit?
                 obs, _, done, info = env.step(keys)
                 state_change = True
+
                 if not death_log: # only append to death log once
                     if info["player_state"] == 11:
                         death_log = {"type": "enemy", "info": copy.deepcopy(last_info)}
@@ -157,7 +159,6 @@ def extract_info_from_bk2s(bk2_file, level):
             #     print(env.statename, info["level"])
 
             if info["lives"] != 2 or info["level"] != level:
-                death_type = death_log["type"]
                 break
             # if done or info["player_state"] == 11 or info["level"] != level or y > MAX_Y:# < -432:# or info["viewport_position"] > 1: #y < -432:# or info["player_dead"] != 32:# or y < -432:
             #     print(env.statename, info["level"])
@@ -212,6 +213,11 @@ def extract_info_from_bk2s(bk2_file, level):
 
         if len(set(x_coords)) == 1 or len(set(actions)) == 1:
             return None, None, None, None, None, None, None, None, None, None
+
+        death_type = death_log["type"] if "type" in death_log else None
+
+        # if death_type is None:
+        #     print(trajectories)
 
         return trajectories, states, actions, total_dist_reward, total_score_reward, total_combined_reward, action_distribution, max_score, death_type, death_log
     
@@ -290,7 +296,8 @@ def load_in_demo_data(demo_dir, level):
                 all_combined_rewards.append(total_combined_reward)
                 all_action_distributions.append(action_distribution)
                 all_max_scores.append(max_score)
-                all_death_types[death_type] += 1
+                if death_type is not None:
+                    all_death_types[death_type] += 1
                 all_death_logs.append(death_log)
                 # combined_action_distribution += action_distribution
 
@@ -860,7 +867,10 @@ def main():
                                             "combined_rewards": all_combined_rewards,
                                             "action_distributions": all_action_distributions,
                                             "max_score": all_max_scores,
-                                            "death_types": all_death_types,
+                                            "fall_ends": all_death_types["fall"],
+                                            "enemy_ends": all_death_types["enemy"],
+                                            "timeout_ends": all_death_types["timeout"],
+                                            "flagpole_ends": all_death_types["flagpole"],
                                             "death_logs": all_death_logs
                                             }
             print(all_death_types)
@@ -888,7 +898,7 @@ def main():
             results[level]["nonexpert demo data"] = {}
 
             for df_key in results[level]["amalgam demo data"]:
-                if df_key == "death_types":
+                if "_ends" in df_key:
                     continue
                 all_data = results[level]["amalgam demo data"][df_key]
                 expert_data, nonexpert_data = split_by_indices(all_data, expert_indices)
@@ -898,17 +908,21 @@ def main():
             exp_death_types = {"fall": 0, "enemy": 0, "flagpole": 0, "timeout": 0}
 
             for death_log in results[level]["expert demo data"]["death_logs"]:
-                exp_death_types[death_log["type"]] += 1
+                if death_log:
+                    exp_death_types[death_log["type"]] += 1
 
-            results[level]["expert demo data"]["death_types"] = exp_death_types
-            
+            for key in exp_death_types:
+                results[level]["expert demo data"][f"{key}_ends"] = exp_death_types[key]
+
             nonexp_death_types = {"fall": 0, "enemy": 0, "flagpole": 0, "timeout": 0}
 
             for death_log in results[level]["nonexpert demo data"]["death_logs"]:
-                nonexp_death_types[death_log["type"]] += 1
+                if death_log:
+                    nonexp_death_types[death_log["type"]] += 1
 
-            results[level]["nonexpert demo data"]["death_types"] = nonexp_death_types
-
+            for key in nonexp_death_types:
+                results[level]["nonexpert demo data"][f"{key}_ends"] = nonexp_death_types[key]
+            
             print(exp_death_types)
             print(nonexp_death_types)
 
