@@ -49,6 +49,8 @@ def evaluate_model(model, env, level, n_episodes=10):
     all_score_rewards = []
     all_combined_rewards = []
     all_max_scores = []
+    all_death_types = {"fall": 0, "enemy": 0, "flagpole": 0, "timeout": 0}
+    all_death_logs = []
 
     for i in range(n_episodes):
         trajectory = []
@@ -79,6 +81,8 @@ def evaluate_model(model, env, level, n_episodes=10):
             obs, reward, done, _, info = env.step(int(action))
 
             if done:
+                all_death_types[info["death_log"]["type"]] += 1
+                all_death_logs.append(copy.deepcopy(info["death_log"]))
                 break  # Exit immediately
 
             # action_distribution[int(action)] += 1
@@ -136,7 +140,7 @@ def evaluate_model(model, env, level, n_episodes=10):
     print(f"Score Reward: {all_score_rewards}")
     print(f"Combined Reward: {all_combined_rewards}")
 
-    return all_trajectories, all_actions, all_action_distributions, all_dist_rewards, all_score_rewards, all_combined_rewards, all_max_scores
+    return all_trajectories, all_actions, all_action_distributions, all_dist_rewards, all_score_rewards, all_combined_rewards, all_max_scores, all_death_types, all_death_logs
 
 
 def get_results(model, env):
@@ -231,7 +235,7 @@ def get_model_results(model_path, model_class, env):
     for level in ALL_LEVELS:
         print(f"\tEvaluating on {level} for {TEST_EPISODES} episodes.")
 
-        all_trajectories, all_actions, all_action_distributions, all_dist_rewards, all_score_rewards, all_combined_rewards, all_max_scores = evaluate_model(model, env, level, TEST_EPISODES)
+        all_trajectories, all_actions, all_action_distributions, all_dist_rewards, all_score_rewards, all_combined_rewards, all_max_scores, all_death_types, all_death_logs = evaluate_model(model, env, level, TEST_EPISODES)
 
         df = pd.DataFrame.from_dict({"trajectories": all_trajectories,
                                 "actions": all_actions,
@@ -239,7 +243,9 @@ def get_model_results(model_path, model_class, env):
                                 "score_rewards": all_score_rewards,
                                 "combined_rewards": all_combined_rewards,
                                 "action_distributions": all_action_distributions,
-                                "max_score": all_max_scores})
+                                "max_score": all_max_scores,
+                                "death_types": all_death_types,
+                                "death_logs": all_death_logs})
 
         df_filename = model_path[:-4] + f"/{level}_dataframe.pkl"
         if not df.empty:

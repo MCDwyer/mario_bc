@@ -129,10 +129,24 @@ def extract_info_from_bk2s(bk2_file, level):
         if step%4 == 0: # only want every 4 timesteps?
             state_change = False
 
+            last_info = copy.deepcopy(info)
+            death_log = {}
+
             while info["player_state"] != 8:# and info["player_state"] != 11:
                 # keep going as non playable bit?
                 obs, _, done, info = env.step(keys)
                 state_change = True
+                if not death_log: # only append to death log once
+                    if info["player_state"] == 11:
+                        death_log = {"type": "enemy", "info": copy.deepcopy(last_info)}
+                    elif info["time"] == last_info["time"]:
+                        death_log = {"type": "fall", "info": copy.deepcopy(last_info)}
+                    elif info["time"] == 0:
+                        death_log = {"type": "timeout", "info": copy.deepcopy(last_info)}
+                    elif info["player_state"] == 4:
+                        death_log = {"type": "flagpole", "info": copy.deepcopy(info)}
+
+                last_info = copy.deepcopy(info)
 
             x = info["x_frame"]*256 + info["x_position_in_frame"]
 
@@ -143,6 +157,7 @@ def extract_info_from_bk2s(bk2_file, level):
             #     print(env.statename, info["level"])
 
             if info["lives"] != 2 or info["level"] != level:
+                death_type = death_log["type"]
                 break
             # if done or info["player_state"] == 11 or info["level"] != level or y > MAX_Y:# < -432:# or info["viewport_position"] > 1: #y < -432:# or info["player_dead"] != 32:# or y < -432:
             #     print(env.statename, info["level"])
@@ -196,11 +211,11 @@ def extract_info_from_bk2s(bk2_file, level):
         y_coords = trajectories[:, 1]
 
         if len(set(x_coords)) == 1 or len(set(actions)) == 1:
-            return None, None, None, None, None, None, None, None
+            return None, None, None, None, None, None, None, None, None, None
 
-        return trajectories, states, actions, total_dist_reward, total_score_reward, total_combined_reward, action_distribution, max_score
+        return trajectories, states, actions, total_dist_reward, total_score_reward, total_combined_reward, action_distribution, max_score, death_type, death_log
     
-    return None, None, None, None, None, None, None, None
+    return None, None, None, None, None, None, None, None, None, None
 
 def map_from_retro_action(binary_action):
     # this function maps from the retro env action space (binary_action) back to the discrete action space
@@ -257,12 +272,14 @@ def load_in_demo_data(demo_dir, level):
     all_combined_rewards = []
     all_action_distributions = []
     all_max_scores = []
+    all_death_types = {"fall": 0, "enemy": 0, "flagpole": 0, "timeout": 0}
+    all_death_logs = []
     # combined_action_distribution = np.zeros(13)
 
     for filename in full_file_list:
         if filename.endswith(".bk2"):
             full_filename = f"{demo_dir_level}/{filename}"
-            trajectories, states, actions, total_dist_reward, total_score_reward, total_combined_reward, action_distribution, max_score = extract_info_from_bk2s(full_filename, level)
+            trajectories, states, actions, total_dist_reward, total_score_reward, total_combined_reward, action_distribution, max_score, death_type, death_log = extract_info_from_bk2s(full_filename, level)
 
             if trajectories is not None:
                 all_trajectories.append(trajectories)
@@ -273,9 +290,11 @@ def load_in_demo_data(demo_dir, level):
                 all_combined_rewards.append(total_combined_reward)
                 all_action_distributions.append(action_distribution)
                 all_max_scores.append(max_score)
+                all_death_types[death_type] += 1
+                all_death_logs.append(death_log)
                 # combined_action_distribution += action_distribution
 
-    return all_trajectories, all_states, all_actions, all_dist_rewards, all_score_rewards, all_combined_rewards, all_action_distributions, all_max_scores#, combined_action_distribution
+    return all_trajectories, all_states, all_actions, all_dist_rewards, all_score_rewards, all_combined_rewards, all_action_distributions, all_max_scores, all_death_types, all_death_logs#, combined_action_distribution
 
 def load_in_agent_data(agent_dir, level, check_for=""):
     full_file_list = filter(
@@ -303,7 +322,11 @@ def load_in_agent_data(agent_dir, level, check_for=""):
                                 "dist_rewards": [],
                                 "score_rewards": [],
                                 "combined_rewards": [],
-                                "action_distributions": []}
+                                "action_distributions": [],
+                                "max_score": [],
+                                "death_types": {"fall": 0, "enemy": 0, "flagpole": 0, "timeout": 0},
+                                "death_logs": [],
+                                }
 
         full_agent_dir = f"{agent_dir}/{directory}"
         dataframes = os.listdir(full_agent_dir)
@@ -321,9 +344,12 @@ def load_in_agent_data(agent_dir, level, check_for=""):
                 if "dist_rewards" not in list(df_dict.keys()):
                     print(full_path)
                 else:
-                    for key in agents[agent_type]:
-                        df_list = [value for _, value in sorted(df_dict[key].items())]
-                        agents[agent_type][key] = agents[agent_type][key] + df_list
+                    for df_key in agents[agent_type]:
+                        if df_key == "death_types":
+                            agents[agent_type][df_key] = {key: df_dict[df_key][key] + agents[agent_type][df_key][key] for key in agents[agent_type][df_key]}
+                        else:                                                         
+                            df_list = [value for _, value in sorted(df_dict[df_key].items())]
+                            agents[agent_type][df_key] = agents[agent_type][df_key] + df_list
     
     return agents
 
@@ -765,7 +791,7 @@ def plot_level_scatters(statistic_dict, plot_dir, agent_types, plot_error_bars=F
         plotly_save_with_dir_check(fig, plot_dir, filename)
 
 FORCE_RELOAD = True
-GENERATE_DATASETS = True
+GENERATE_DATASETS = False
 PLOTS = False
 PLOT_HEATMAPS = False
 MAKE_TABLE = False
@@ -826,7 +852,7 @@ def main():
             results[level]["nonexpert demo data"] = df.to_dict()
         else:
             data_generated = True
-            all_trajectories, all_states, all_actions, all_dist_rewards, all_score_rewards, all_combined_rewards, all_action_distributions, all_max_scores = load_in_demo_data(demo_bk2_dir, level)
+            all_trajectories, all_states, all_actions, all_dist_rewards, all_score_rewards, all_combined_rewards, all_action_distributions, all_max_scores, all_death_types, all_death_logs = load_in_demo_data(demo_bk2_dir, level)
             results[level]["amalgam demo data"] = {"trajectories": copy.deepcopy(all_trajectories), 
                                             "actions": copy.deepcopy(all_actions),
                                             "dist_rewards": all_dist_rewards,
@@ -834,7 +860,10 @@ def main():
                                             "combined_rewards": all_combined_rewards,
                                             "action_distributions": all_action_distributions,
                                             "max_score": all_max_scores,
+                                            "death_types": all_death_types,
+                                            "death_logs": all_death_logs
                                             }
+            print(all_death_types)
 
             df = pd.DataFrame.from_dict(results[level]["amalgam demo data"])
 
@@ -858,12 +887,31 @@ def main():
             results[level]["expert demo data"] = {}
             results[level]["nonexpert demo data"] = {}
 
-            for key in results[level]["amalgam demo data"]:
-                all_data = results[level]["amalgam demo data"][key]
+            for df_key in results[level]["amalgam demo data"]:
+                if df_key == "death_types":
+                    continue
+                all_data = results[level]["amalgam demo data"][df_key]
                 expert_data, nonexpert_data = split_by_indices(all_data, expert_indices)
-                results[level]["expert demo data"][key] = copy.deepcopy(expert_data)
-                results[level]["nonexpert demo data"][key] = copy.deepcopy(nonexpert_data)
+                results[level]["expert demo data"][df_key] = copy.deepcopy(expert_data)
+                results[level]["nonexpert demo data"][df_key] = copy.deepcopy(nonexpert_data)
             
+            exp_death_types = {"fall": 0, "enemy": 0, "flagpole": 0, "timeout": 0}
+
+            for death_log in results[level]["expert demo data"]["death_logs"]:
+                exp_death_types[death_log["type"]] += 1
+
+            results[level]["expert demo data"]["death_types"] = exp_death_types
+            
+            nonexp_death_types = {"fall": 0, "enemy": 0, "flagpole": 0, "timeout": 0}
+
+            for death_log in results[level]["nonexpert demo data"]["death_logs"]:
+                nonexp_death_types[death_log["type"]] += 1
+
+            results[level]["nonexpert demo data"]["death_types"] = nonexp_death_types
+
+            print(exp_death_types)
+            print(nonexp_death_types)
+
             df = pd.DataFrame.from_dict(results[level]["expert demo data"])
             dataframe_saving(df, expert_demo_filename)
 
