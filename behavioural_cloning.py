@@ -166,12 +166,14 @@ def load_data(training_data_name, levels, n_stack=1):
 
         print(f"Loading {level} demo data from {full_filepath}.")
 
+        observations = np.array(observations)
+        print(observations.shape)
+
         if all_actions is None:
             all_actions = np.array(actions)
             observations = np.array(observations)
             observations = observations.reshape(observations.shape[0], observations.shape[3], observations.shape[1], observations.shape[2])
             all_observations = observations
-
 
         else:
             all_actions = np.concatenate((all_actions, np.array(actions)))
@@ -241,7 +243,7 @@ def load_data(training_data_name, levels, n_stack=1):
 
 #     return actions, observations, next_observations, rewards
 
-def behavioural_cloning(model_name, model, levels, training_data_name, model_path, lr=1e-2, num_epochs=10, batch_size=64, n_stack=1):
+def behavioural_cloning(model_name, model, levels, training_data_name, model_path, lr=5e-3, num_epochs=10, batch_size=128, n_stack=1):
 
     # actions, observations, next_observations, rewards = load_data(filepath, n_stack)
 
@@ -257,7 +259,11 @@ def behavioural_cloning(model_name, model, levels, training_data_name, model_pat
     print(f"\tNumber of Epochs: {num_epochs}")
     print(f"\tBatch Size: {batch_size}")
     print(f"\tObservation Stack: {n_stack}\n")
-    print(f"Model Parameters (stored on model): {model.get_parameters()}\n")
+
+    print(f"Model Parameters (stored on model):\n")
+    print(f"\tLearning Rate: {model.learning_rate}")
+    print(f"\tBatch Size: {model.batch_size}")
+
     print("Model Policy Structure:")
     print(model.policy)
     print()
