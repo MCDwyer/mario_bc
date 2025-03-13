@@ -23,7 +23,7 @@ TIMESTEPS = 20000000
 POLICY = "CnnPolicy"
 LEVEL_CHANGE = "random"
 NUM_ACTIONS = 13
-ONLY_BC = True
+ONLY_BC = False
 
 RESUME_TRAINING = True
 EVALUATION_FREQ = 200000
@@ -112,7 +112,7 @@ class ActionDistributionEvalCallback(EvalCallback):
             # total_dist_reward += episode_dist_reward
             # eval_info_dict = {"score": info["score"], "x_frame": info["x_frame"], "y_frame": info["y_frame"], "x_position_in_frame": info["x_position_in_frame"], "y_position_in_frame": info["y_position_in_frame"], "lives": info["lives"]}
             # self.eval_info.append(info)
-            print(info)
+            # print(info)
 
         avg_score_reward = total_score_reward / self.n_eval_episodes
         avg_dist_reward = total_dist_reward / self.n_eval_episodes
@@ -290,6 +290,8 @@ def main(agent_index):
         print(f"Cross validation set {EXP_RUN_ID[-1]} used, training levels set to: {levels_to_use}.")
         print("NOTE TO SELF -> CANT DO CROSS VALIDATION PROPERLY UNTIL BC DATASETS HAVE BEEN CHANGED - OTHERWISE TEST DATA WILL BE IN BC STAGE")
 
+    env.set_reward_function(EXP_RUN_ID)
+    
     if MODEL_PARAMETERS:
         env.n_stack = MODEL_PARAMETERS['n_stack']
 
@@ -421,7 +423,7 @@ if __name__ == "__main__":
         EXP_RUN_ID = sys.argv[4]
         EXP_RUN_ID.replace(" ", "_")
 
-        if "default" in EXP_RUN_ID:
+        if "default" in EXP_RUN_ID.lower():
             USE_TUNED_PARAMS = False
         else:
             USE_TUNED_PARAMS = True
