@@ -158,7 +158,7 @@ def extract_info_from_bk2s(bk2_file, level):
             #     level = info["level"]
             #     print(env.statename, info["level"])
 
-            if info["lives"] != 2 or info["level"] != level:
+            if info["lives"] < 2 or info["level"] != level:
                 break
             # if done or info["player_state"] == 11 or info["level"] != level or y > MAX_Y:# < -432:# or info["viewport_position"] > 1: #y < -432:# or info["player_dead"] != 32:# or y < -432:
             #     print(env.statename, info["level"])
@@ -798,7 +798,7 @@ def plot_level_scatters(statistic_dict, plot_dir, agent_types, plot_error_bars=F
         plotly_save_with_dir_check(fig, plot_dir, filename)
 
 FORCE_RELOAD = True
-GENERATE_DATASETS = False
+GENERATE_DATASETS = True
 PLOTS = False
 PLOT_HEATMAPS = False
 MAKE_TABLE = False
