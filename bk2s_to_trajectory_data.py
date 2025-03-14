@@ -9,7 +9,7 @@ from plotly.subplots import make_subplots
 import cv2
 import pickle
 
-MAX_X = 3710
+MAX_X = 3840
 MAX_Y = 768
 MARIO_X = 13
 MARIO_Y = 16
@@ -183,16 +183,16 @@ def extract_info_from_bk2s(bk2_file, level):
                 state_change = False
             else:
                 dist_reward = (x - prev_position)
-                score_reward = ((info['score']*10) - prev_score)
+                score_reward = ((int(info['score'])*10) - prev_score)
                 # score_reward = ((info['score']) - prev_score)
                 
 
             total_dist_reward += dist_reward
             total_score_reward += score_reward
-            total_combined_reward += (dist_reward/2 + score_reward/2)
+            total_combined_reward += (dist_reward/2 + score_reward/2)*MAX_X
 
             prev_position = x
-            prev_score = info['score']*10
+            prev_score = int(info['score'])*10
             prev_state = obs
 
             if prev_score > max_score:

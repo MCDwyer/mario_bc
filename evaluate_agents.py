@@ -62,59 +62,36 @@ def evaluate_model(model, env, level, n_episodes=10):
         total_combined_reward = 0
         total_reward = 0
 
-        step = 0
-
-        prev_position = 40
         prev_score = 0
         max_score = 0
         
         obs, _ = env.reset(options={"level": level})
         done = False
 
-        state_change = False
-
         while not done:
-            # step += 1
-
-            # if step > 10:
-            #     break
             action, _states = model.predict(obs)
             obs, reward, done, _, info = env.step(int(action))
 
-            # action_distribution[int(action)] += 1
+            # env.render()
+
             np.add.at(action_distribution, int(action), 1)
 
             x = info["x_frame"]*256 + info["x_position_in_frame"]
             y = ((info["y_frame"]*256) + info["y_position_in_frame"])
             
-            # if info["player_state"] == 11 or level not in env.retro_env.statename:# < -432:# or info["viewport_position"] > 1: #y < -432:# or info["player_dead"] != 32:# or y < -432:
-            #     break
-
-            # if info["level"] != prev_level:
-            #     trajectory.append(f"Level index: {info["level"]}")
-            #     actions.append(f"Level index: {info["level"]}")
-
             trajectory.append([x, y])
             actions.append(action)
 
-            # if state_change:
-            #     dist_reward = 0
-            #     score_reward = 0
-            # else:
-            #     dist_reward = (x - prev_position)
-            #     score_reward = (info['score'] - prev_score)
-            
             dist_reward = env.dist_reward
             score_reward = env.score_reward
             combined_reward = env.combined_reward
             total_dist_reward += dist_reward
-            total_score_reward += score_reward
+            total_score_reward += int(score_reward)
             total_combined_reward += combined_reward
 
             total_reward += reward
 
-            prev_position = x
-            prev_score = info['score']
+            prev_score = int(info['score'])*10
 
             if prev_score > max_score:
                 max_score = prev_score
@@ -128,8 +105,6 @@ def evaluate_model(model, env, level, n_episodes=10):
                 print(reward, score_reward, dist_reward)
                 print(f"Why isn't this working!!!! player state = {info['player_state']}")
 
-        print(info["score"])
-        print(info["player_state"])
         print(info["death_log"])
         
         all_trajectories.append(trajectory)
@@ -149,22 +124,6 @@ def evaluate_model(model, env, level, n_episodes=10):
 
     return all_trajectories, all_actions, all_action_distributions, all_dist_rewards, all_score_rewards, all_combined_rewards, all_max_scores, all_death_types, all_death_logs
 
-
-def get_results(model, env):
-    mean_rewards = {}
-    rewards = {}
-    trajectories = {}
-
-    for level in ALL_LEVELS:
-        env.level = level
-
-        mean_reward, rewards, episode_trajectories, episode_info = evaluate_model(model, env, level, ".", TEST_EPISODES)
-
-        trajectories[level] = episode_trajectories
-        mean_rewards[level] = mean_reward
-        rewards[level] = rewards
-
-    return mean_rewards, rewards, trajectories
 
 def two_agent_statistical_tests(unsupervised_results, supervised_results):
     # Check the normality:
@@ -235,7 +194,6 @@ def four_agent_statistical_tests(agent_1, agent_2, agent_3, agent_4, mean_reward
     print()
 
 def get_model_results(model_path, model_class, env):
-    env.set_evaluation_mode(True)
 
     os.makedirs(model_path.split(".")[0], exist_ok=True)
 
@@ -289,7 +247,6 @@ def main():
     # env.set_record_option("test_bk2s/.")
 
     env.level_change_type = "No Change"
-    env.set_evaluation_mode(True)
 
     print(env.action_space)
 
