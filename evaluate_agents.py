@@ -13,6 +13,7 @@ import json
 import shutil
 import copy
 import pandas as pd
+import cv2
 
 TIMESTEPS = 20000000
 UNSUPERVISED = False
@@ -80,19 +81,14 @@ def evaluate_model(model, env, level, n_episodes=10):
             action, _states = model.predict(obs)
             obs, reward, done, _, info = env.step(int(action))
 
-            if done:
-                all_death_types[info["death_log"]["type"]] += 1
-                all_death_logs.append(copy.deepcopy(info["death_log"]))
-                break  # Exit immediately
-
             # action_distribution[int(action)] += 1
             np.add.at(action_distribution, int(action), 1)
 
             x = info["x_frame"]*256 + info["x_position_in_frame"]
             y = ((info["y_frame"]*256) + info["y_position_in_frame"])
             
-            if info["player_state"] == 11 or level not in env.retro_env.statename:# < -432:# or info["viewport_position"] > 1: #y < -432:# or info["player_dead"] != 32:# or y < -432:
-                break
+            # if info["player_state"] == 11 or level not in env.retro_env.statename:# < -432:# or info["viewport_position"] > 1: #y < -432:# or info["player_dead"] != 32:# or y < -432:
+            #     break
 
             # if info["level"] != prev_level:
             #     trajectory.append(f"Level index: {info["level"]}")
@@ -110,9 +106,10 @@ def evaluate_model(model, env, level, n_episodes=10):
             
             dist_reward = env.dist_reward
             score_reward = env.score_reward
+            combined_reward = env.combined_reward
             total_dist_reward += dist_reward
             total_score_reward += score_reward
-            total_combined_reward += (dist_reward/2 + score_reward/2)
+            total_combined_reward += combined_reward
 
             total_reward += reward
 
@@ -122,10 +119,19 @@ def evaluate_model(model, env, level, n_episodes=10):
             if prev_score > max_score:
                 max_score = prev_score
 
+            if done:
+                all_death_types[info["death_log"]["type"]] += 1
+                all_death_logs.append(copy.deepcopy(info["death_log"]))
+                break  # Exit immediately
+
             if dist_reward < -2000:
                 print(reward, score_reward, dist_reward)
                 print(f"Why isn't this working!!!! player state = {info['player_state']}")
 
+        print(info["score"])
+        print(info["player_state"])
+        print(info["death_log"])
+        
         all_trajectories.append(trajectory)
         all_actions.append(actions)
         all_action_distributions.append(action_distribution)
@@ -134,11 +140,12 @@ def evaluate_model(model, env, level, n_episodes=10):
         all_combined_rewards.append(total_combined_reward)
         all_max_scores.append(max_score)
 
-        print(f"Episode {i} reward: {total_reward} - dist_reward: {total_dist_reward}")
+        print(f"Episode {i} reward: {total_reward} - dist_reward: {total_dist_reward}, score_reward: {total_score_reward}, combined_reward: {total_combined_reward}")
 
     print(f"Distance Reward: {all_dist_rewards}")
     print(f"Score Reward: {all_score_rewards}")
     print(f"Combined Reward: {all_combined_rewards}")
+    print(f"End conditions: {all_death_types}")
 
     return all_trajectories, all_actions, all_action_distributions, all_dist_rewards, all_score_rewards, all_combined_rewards, all_max_scores, all_death_types, all_death_logs
 
@@ -228,6 +235,8 @@ def four_agent_statistical_tests(agent_1, agent_2, agent_3, agent_4, mean_reward
     print()
 
 def get_model_results(model_path, model_class, env):
+    env.set_evaluation_mode(True)
+
     os.makedirs(model_path.split(".")[0], exist_ok=True)
 
     model = model_class.load(model_path, env, verbose=1)
@@ -280,6 +289,7 @@ def main():
     # env.set_record_option("test_bk2s/.")
 
     env.level_change_type = "No Change"
+    env.set_evaluation_mode(True)
 
     print(env.action_space)
 
@@ -496,6 +506,7 @@ def run_evaluations(saved_model_dir):
     concurrent_evaluations_filepath = f"{saved_model_dir}currently_being_evaluated.txt"
 
     if os.path.isfile(evaluated_files_filepath):
+        print(evaluated_files_filepath)
         # load in list of all files already evaluated?
         with open(evaluated_files_filepath, "r") as f:
             evaluated_files_list = f.read()
@@ -504,6 +515,7 @@ def run_evaluations(saved_model_dir):
     else:
         evaluated_files_list = []
 
+    print("Already evaluated:")
     print(evaluated_files_list)
 
     full_file_list = os.listdir(saved_model_dir)
@@ -511,6 +523,9 @@ def run_evaluations(saved_model_dir):
     file_list = []
     for filename in full_file_list:
         if filename.endswith(".zip") and not filename.endswith("bk2s.zip"):
+            if NO_BC_ONLY:
+                if filename.endswith("bc_only.zip"):
+                    continue
             file_list.append(filename)
     
     # file_list = 
@@ -518,6 +533,7 @@ def run_evaluations(saved_model_dir):
 
     file_list = file_list[INDEX:] if INDEX < len(file_list) else file_list
 
+    print("\nRemaining models to evaluate:")
     print(file_list)
 
     for filename in file_list:
@@ -561,6 +577,7 @@ def run_evaluations(saved_model_dir):
             # else:
             #     print("Error: Zip creation failed, directory not deleted.")
 
+NO_BC_ONLY = True
 
 if __name__ == "__main__":
     if len(sys.argv) != 3:

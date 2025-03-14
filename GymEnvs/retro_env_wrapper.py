@@ -23,7 +23,7 @@ NO_CHANGE = "No Change"
 
 MAX_SCORE = 1000
 MAX_DISTANCE = 3840
-DEATH_PENALTY = -100
+DEATH_PENALTY = -25
 
 TRAINING_LEVELS = ["Level1-1", "Level2-1", "Level4-1", "Level5-1", "Level6-1", "Level8-1"]
 TEST_LEVELS = ["Level3-1", "Level7-1"]
@@ -81,9 +81,12 @@ class MarioEnv(gym.Env):
         self.score = 0
         self.score_reward = 0
         self.dist_reward = 0
+        self.reward = 0
+        self.combined_reward = 0
         self.done = False
         self.prev_lives = 2
         self.episode_cumulative_reward = 0
+        self.evaluation_mode = False
 
         # Define action and observation space
         # They must be gym.spaces objects
@@ -102,6 +105,10 @@ class MarioEnv(gym.Env):
     def n_stack(self, value):
         self._n_stack = value
         self.observation_space = gym.spaces.Box(low=0, high=255, shape=(84, 84, value), dtype=np.uint8) # greyscale 84x84??
+
+    def set_evaluation_mode(self, evaluate):
+        self.evaluation_mode = evaluate
+        print(f"Evaluation mode is set to {self.evaluation_mode}")
 
     def set_reward_function(self, exp_id):
         if "score" in exp_id.lower():
@@ -213,6 +220,8 @@ class MarioEnv(gym.Env):
         self.episode_cumulative_reward = 0
         self.score_reward = 0
         self.dist_reward = 0
+        self.reward = 0
+        self.combined_reward = 0
         self.prev_lives = info["lives"]
 
         level_name = self.retro_env.statename.split(".")[0] # level.state -> only want the level name
@@ -220,44 +229,50 @@ class MarioEnv(gym.Env):
 
         return self.state, {}
 
-    def horizontal_reward_function(self, info, state_change, died):
+    def horizontal_reward_function(self, info, state_change, died, evaluation=False):
 
-        current_horizontal_position = info["x_frame"]*256 + info["x_position_in_frame"]
+        current_horizontal_position = int(info["x_frame"])*256 + int(info["x_position_in_frame"])
         
         reward = current_horizontal_position - self.horizontal_position
 
-        self.horizontal_position = current_horizontal_position
+        if not evaluation:
+            self.horizontal_position = current_horizontal_position
         
         # player_state == 11 is dying, 5 is level change type bits, 8 is normal play?
         if died:
-            reward = DEATH_PENALTY
+            reward = self.death_reward()
         if not died and state_change:
-            return 0 #???           
+            reward = 0 #???           
         
         reward = 0 if reward < 0 else reward
+        self.dist_reward = reward
 
         return reward
 
-    def less_sparse_score_reward_function(self, info, state_change, died):
+    # def less_sparse_score_reward_function(self, info, state_change, died):
 
-        if died:
-            reward = DEATH_PENALTY # lose reward if died to match distance method
+    #     if died:
+    #         reward = DEATH_PENALTY # lose reward if died to match distance method
         
-        score_reward = self.score_reward_function(info, state_change, died)
+    #     score_reward = self.score_reward_function(info, state_change, died)
 
-        horizontal_position_reward = self.horizontal_reward_function(info, state_change)
+    #     horizontal_position_reward = self.horizontal_reward_function(info, state_change)
 
-        reward = score_reward + horizontal_position_reward/MAX_DISTANCE
-        
-        return reward
+    #     reward = score_reward + horizontal_position_reward/MAX_DISTANCE
+    #     return reward
 
-    def score_reward_function(self, info, state_change, died):
+    # @static
+    # def static_score(self, info, previous_score):
+    #     return info["score"]*10, 
 
-        current_score = info["score"]*10
+    def score_reward_function(self, info, state_change, died, evaluation=False):
+
+        current_score = int(info["score"])*10
 
         reward = current_score - self.score
 
-        self.score = current_score
+        if not evaluation:
+            self.score = current_score
 
         if died:
             reward = self.death_reward()
@@ -265,28 +280,29 @@ class MarioEnv(gym.Env):
             # lose reward if died to match distance method
         # player_state == 11 is dying, 5 is level change type bits, 8 is normal play?
         elif state_change:
-            return 0 #???
+            reward = 0 #???
         
         reward = 0 if reward < 0 else reward
+        self.score_reward = reward
  
         return reward
 
-    def combined_reward_function(self, info, state_change, died):
+    def combined_reward_function(self, info, state_change, died, evaluation=False):
+
+        score_reward_value = self.score_reward_function(info, state_change, died, evaluation)
+
+        horizontal_reward_value = self.horizontal_reward_function(info, state_change, died, evaluation)
+
+        reward = ((score_reward_value/MAX_SCORE)/2 + (horizontal_reward_value/MAX_DISTANCE)/2)*MAX_DISTANCE # this is because all the tuning etc. was to do with this value?
 
         if died:
-            reward = -25#DEATH_PENALTY
-            # reward = self.death_reward()
+            reward = self.death_reward()
             # reward = (DEATH_PENALTY/MAX_DISTANCE)*1000 # this is because all the tuning etc. was to do with the distance value? 
             # lose reward if died to match distance method
-        else:
-
-            score_reward_value = self.score_reward_function(info, state_change, died)
-
-            horizontal_reward_value = self.horizontal_reward_function(info, state_change, died)
-            
-            reward = ((score_reward_value/MAX_SCORE)/2 + (horizontal_reward_value/MAX_DISTANCE)/2)*MAX_DISTANCE # this is because all the tuning etc. was to do with this value?
 
         reward = 0 if reward < 0 else reward
+
+        self.combined_reward = reward
 
         return reward
 
@@ -357,12 +373,12 @@ class MarioEnv(gym.Env):
             if not death_log: # only append to death log once
                 if info["player_state"] == 11:
                     death_log = {"type": "enemy", "info": copy.deepcopy(last_info)}
-                elif info["time"] == last_info["time"]:
-                    death_log = {"type": "fall", "info": copy.deepcopy(last_info)}
                 elif info["time"] == 0:
                     death_log = {"type": "timeout", "info": copy.deepcopy(last_info)}
                 elif info["player_state"] == 4:
                     death_log = {"type": "flagpole", "info": copy.deepcopy(info)}
+                elif info["time"] == last_info["time"]:
+                    death_log = {"type": "fall", "info": copy.deepcopy(last_info)}
 
             last_info = copy.deepcopy(info)
 
@@ -377,6 +393,9 @@ class MarioEnv(gym.Env):
             done = True 
 
         self.state = self.process_observation(obs)
+
+        if self.evaluation_mode:
+            self.combined_reward_function(info, state_change, died, evaluation=True)
 
         reward = self.reward_function(info, state_change, died)
         self.episode_cumulative_reward += reward
@@ -402,7 +421,18 @@ class MarioEnv(gym.Env):
         return state, reward, self.done, False, info
 
     def render(self):
-        pass
+        height, width, _ = self.state.shape  # Get original dimensions
+        new_size = (width * 10, height * 10)  # New dimensions
+
+        # Resize the observation to make it bigger
+        resized_obs = cv2.resize(self.state, new_size, interpolation=cv2.INTER_LINEAR)
+
+        # Display the frame
+        cv2.imshow("Gym Retro Frame", cv2.cvtColor(resized_obs, cv2.COLOR_RGB2BGR))
+
+        # Break on ESC key
+        if cv2.waitKey(1) & 0xFF == 27:
+            quit()
         # self.retro_env.render()
 
     def close(self):
