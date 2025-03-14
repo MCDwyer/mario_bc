@@ -83,7 +83,7 @@ ACTION_DISTRIBUTION_TAGS = {
 # rollout/ep_rew_mean
 
 # SHARED_DIR = "experiments/combined_tuned_params/training_logs/level_change_random/"
-SHARED_DIR = "/Users/mdwyer/Documents/Code/PhD_Mario_Work/mario_bc/training_logs/experiments/tuned_exp_params/training_logs/level_change_random/"
+SHARED_DIR = "/Users/mdwyer/Documents/Code/PhD_Mario_Work/mario_bc/training_logs/experiments/tuned_exp_test_params/training_logs/level_change_random/"
 
 SUP_LOG_DIR = f"{SHARED_DIR}supervised/amalgam/PPO_20M_agent_"
 
