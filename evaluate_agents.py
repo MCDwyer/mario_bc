@@ -244,8 +244,12 @@ def get_model_results(model_path, model_class, env):
                                 "combined_rewards": all_combined_rewards,
                                 "action_distributions": all_action_distributions,
                                 "max_score": all_max_scores,
-                                "death_types": all_death_types,
-                                "death_logs": all_death_logs})
+                                "fall_ends": all_death_types["fall"],
+                                "enemy_ends": all_death_types["enemy"],
+                                "timeout_ends": all_death_types["timeout"],
+                                "flagpole_ends": all_death_types["flagpole"],
+                                "death_logs": all_death_logs
+                                })
 
         df_filename = model_path[:-4] + f"/{level}_dataframe.pkl"
         if not df.empty:
