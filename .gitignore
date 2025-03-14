@@ -3,3 +3,9 @@ GymEnvs/__pycache__/
 NES_ROMS/
 *.out
 *.err
+experiments/
+cross_validation_levels/
+bc_datasets/
+*.db
+test_gifs/
+user_data_processed_for_bc/
