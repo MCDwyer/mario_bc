@@ -288,7 +288,6 @@ def main(agent_index):
         env.change_level_set(levels_to_use)
 
         print(f"Cross validation set {EXP_RUN_ID[-1]} used, training levels set to: {levels_to_use}.")
-<<<<<<< HEAD
 
     value = ""
 
@@ -317,22 +316,6 @@ def main(agent_index):
 
     string_timesteps = f"{int(TIMESTEPS/1000000)}M"
 
-=======
-        print("NOTE TO SELF -> CANT DO CROSS VALIDATION PROPERLY UNTIL BC DATASETS HAVE BEEN CHANGED - OTHERWISE TEST DATA WILL BE IN BC STAGE")
-
-    env.set_reward_function(EXP_RUN_ID)
-    
-    if MODEL_PARAMETERS:
-        env.n_stack = MODEL_PARAMETERS['n_stack']
-
-    if MODEL_NAME == 'SAC':
-        env = DiscreteToBoxWrapper(env)
-
-    env = Monitor(env)
-
-    string_timesteps = f"{int(TIMESTEPS/1000000)}M"
-
->>>>>>> 87432cd6fef1718546a74fa501d3d9adb08cf6ad
     sup_string = "unsupervised" if UNSUPERVISED else f"bc_{TRAINING_DATA_NAME}"
     model_path = model_dir + f"{MODEL_NAME}_{sup_string}_{string_timesteps}_agent_{agent_index}"
 
@@ -402,7 +385,6 @@ def main(agent_index):
         print("Model is attempting to resume training.")
 
         model_loaded = False
-<<<<<<< HEAD
 
         # so then we find the most recent model
         largest_filename, steps = find_largest_steps_file(log_dir, name_prefix)
@@ -422,27 +404,6 @@ def main(agent_index):
             except:
                 model_loaded = False
 
-=======
-
-        # so then we find the most recent model
-        largest_filename, steps = find_largest_steps_file(log_dir, name_prefix)
-        if largest_filename is not None:
-            prev_model_path = log_dir + "/" + largest_filename
-
-            print(f"Attempting to load in model from: {prev_model_path}")
-            try:
-                model = MODEL_CLASS.load(prev_model_path, env, verbose=1, tensorboard_log=tmp_path, print_system_info=True)
-                timesteps = TIMESTEPS - steps
-                model_loaded = True
-
-                optimizer_path = f"{log_dir}{name_prefix}_optimizer.pth"
-                optimizer_state = torch.load(optimizer_path)
-                model.policy.optimizer.load_state_dict(optimizer_state)
-                print("Previous optimiser state has been loaded in.")
-            except:
-                model_loaded = False
-
->>>>>>> 87432cd6fef1718546a74fa501d3d9adb08cf6ad
         if not model_loaded:
             print("Model couldn't be loaded in, so will begin training from 0.")
         else:

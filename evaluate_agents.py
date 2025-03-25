@@ -114,7 +114,6 @@ def evaluate_model(model, env, level, n_episodes=10):
         all_score_rewards.append(total_score_reward)
         all_combined_rewards.append(total_combined_reward)
         all_max_scores.append(max_score)
-<<<<<<< HEAD
 
         print(f"Episode {i} reward: {total_reward} - dist_reward: {total_dist_reward}, score_reward: {total_score_reward}, combined_reward: {total_combined_reward}")
 
@@ -123,16 +122,6 @@ def evaluate_model(model, env, level, n_episodes=10):
     print(f"Combined Reward: {all_combined_rewards}")
     print(f"End conditions: {all_death_types}")
 
-=======
-
-        print(f"Episode {i} reward: {total_reward} - dist_reward: {total_dist_reward}, score_reward: {total_score_reward}, combined_reward: {total_combined_reward}")
-
-    print(f"Distance Reward: {all_dist_rewards}")
-    print(f"Score Reward: {all_score_rewards}")
-    print(f"Combined Reward: {all_combined_rewards}")
-    print(f"End conditions: {all_death_types}")
-
->>>>>>> 87432cd6fef1718546a74fa501d3d9adb08cf6ad
     return all_trajectories, all_actions, all_action_distributions, all_dist_rewards, all_score_rewards, all_combined_rewards, all_max_scores, all_death_types, all_death_logs
 
 
@@ -247,11 +236,6 @@ def main():
 
     env = gym.make('MarioEnv-v0')
 
-<<<<<<< HEAD
-    
-
-=======
->>>>>>> 87432cd6fef1718546a74fa501d3d9adb08cf6ad
     get_model_results(model_path, model_class, env)
 
     log_dir = f"training_logs/level_change_{LEVEL_CHANGE}/"
@@ -475,7 +459,6 @@ def run_evaluations(saved_model_dir):
 
     env = gym.make('MarioEnv-v0')
 
-<<<<<<< HEAD
     value = ""
 
     if EXP_RUN_ID[0].isdigit():
@@ -493,8 +476,6 @@ def run_evaluations(saved_model_dir):
     
     env.set_reward_function(EXP_RUN_ID)
 
-=======
->>>>>>> 87432cd6fef1718546a74fa501d3d9adb08cf6ad
     evaluated_files_filepath = f"{saved_model_dir}read_files_list.txt"
     concurrent_evaluations_filepath = f"{saved_model_dir}currently_being_evaluated.txt"
 

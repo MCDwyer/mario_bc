@@ -23,11 +23,7 @@ NO_CHANGE = "No Change"
 
 MAX_SCORE = 1000
 MAX_DISTANCE = 3840
-<<<<<<< HEAD
 DEATH_PENALTY = -100
-=======
-DEATH_PENALTY = -25
->>>>>>> 87432cd6fef1718546a74fa501d3d9adb08cf6ad
 
 TRAINING_LEVELS = ["Level1-1", "Level2-1", "Level4-1", "Level5-1", "Level6-1", "Level8-1"]
 TEST_LEVELS = ["Level3-1", "Level7-1"]
@@ -58,10 +54,7 @@ class MarioEnv(gym.Env):
         self._use_training_levels = True
         self.unprocessed_obs = False
         self._n_stack = 1
-<<<<<<< HEAD
         self.death_penalty = -100
-=======
->>>>>>> 87432cd6fef1718546a74fa501d3d9adb08cf6ad
 
         self.stacked_obs = []
 
@@ -99,7 +92,6 @@ class MarioEnv(gym.Env):
 
         # Example: observation space with continuous values between 0 and 1
         self.observation_space = gym.spaces.Box(low=0, high=255, shape=(84, 84, self.n_stack), dtype=np.uint8) # greyscale 84x84??
-<<<<<<< HEAD
 
         self.reward_function = self.horizontal_reward_function
 
@@ -130,34 +122,6 @@ class MarioEnv(gym.Env):
 
         print(f"Reward function = {self.reward_function} and death penalty = {self.death_penalty}")
 
-=======
-
-        self.reward_function = self.horizontal_reward_function
-
-    @property
-    def n_stack(self):
-        return self._n_stack
-    
-    @n_stack.setter
-    def n_stack(self, value):
-        self._n_stack = value
-        self.observation_space = gym.spaces.Box(low=0, high=255, shape=(84, 84, value), dtype=np.uint8) # greyscale 84x84??
-
-    def set_reward_function(self, exp_id):
-        if "score" in exp_id.lower():
-            self.reward_function = self.score_reward_function
-        elif "combined" in exp_id.lower():
-            self.reward_function = self.combined_reward_function
-        elif "inverted" in exp_id.lower():
-            self.reward_function = self.original_inverted_horizontal_reward_function
-        elif "original" in exp_id.lower():
-            self.reward_function = self.original_horizontal_reward_function
-        else:
-            self.reward_function = self.horizontal_reward_function
-
-        print(f"Reward function = {self.reward_function} and death penalty = {DEATH_PENALTY}")
-
->>>>>>> 87432cd6fef1718546a74fa501d3d9adb08cf6ad
         return
 
     def change_mode(self):
@@ -278,7 +242,6 @@ class MarioEnv(gym.Env):
 
     def original_inverted_horizontal_reward_function(self, info, state_change, died):
         # only punishes deaths by timeout and fall
-<<<<<<< HEAD
 
         current_horizontal_position = self.get_horizontal_position(info)
         
@@ -296,43 +259,11 @@ class MarioEnv(gym.Env):
 
     def original_horizontal_reward_function(self, info, state_change, died):
         # only punishes deaths by timeout and enemy
-=======
->>>>>>> 87432cd6fef1718546a74fa501d3d9adb08cf6ad
 
         current_horizontal_position = self.get_horizontal_position(info)
         
         reward = current_horizontal_position - self.horizontal_position
 
-        if info["death_log"]:
-<<<<<<< HEAD
-            if info["death_log"]["type"] == "timeout" or info["death_log"]["type"] == "enemy": 
-                return reward
-            
-        if state_change:
-            reward = 0 #???
-
-        return reward
-
-    def horizontal_reward_function(self, info, state_change, died):
-=======
-            if info["death_log"]["type"] == "timeout" or info["death_log"]["type"] == "fall": 
-                return reward
-
-        if state_change:
-            reward = 0
-            
-        return reward
-
-    def original_horizontal_reward_function(self, info, state_change, died):
-        # only punishes deaths by timeout and enemy
->>>>>>> 87432cd6fef1718546a74fa501d3d9adb08cf6ad
-
-        current_horizontal_position = self.get_horizontal_position(info)
-        
-        reward = current_horizontal_position - self.horizontal_position
-
-<<<<<<< HEAD
-=======
         if info["death_log"]:
             if info["death_log"]["type"] == "timeout" or info["death_log"]["type"] == "enemy": 
                 return reward
@@ -348,7 +279,6 @@ class MarioEnv(gym.Env):
         
         reward = current_horizontal_position - self.horizontal_position
 
->>>>>>> 87432cd6fef1718546a74fa501d3d9adb08cf6ad
         # player_state == 11 is dying, 5 is level change type bits, 8 is normal play?
         if died:
             reward = self.death_reward()
@@ -367,12 +297,7 @@ class MarioEnv(gym.Env):
         reward = current_score - self.score
 
         if died:
-<<<<<<< HEAD
             reward = self.death_reward() # this is because all the tuning etc. was to do with the distance values? 
-=======
-            reward = self.death_reward()
-            reward = (reward/MAX_DISTANCE)*MAX_SCORE # this is because all the tuning etc. was to do with the distance values? 
->>>>>>> 87432cd6fef1718546a74fa501d3d9adb08cf6ad
             # lose reward if died to match distance method
         # player_state == 11 is dying, 5 is level change type bits, 8 is normal play?
         elif state_change:
@@ -385,27 +310,14 @@ class MarioEnv(gym.Env):
 
     def combined_reward_function(self, info, state_change, died):
 
-<<<<<<< HEAD
         score_reward_value = self.score_reward_function(info, state_change, died)
 
         horizontal_reward_value = self.horizontal_reward_function(info, state_change, died)
-=======
-        score_reward_value = self.score_reward_function(info, state_change, died, evaluation)
-
-        horizontal_reward_value = self.horizontal_reward_function(info, state_change, died, evaluation)
->>>>>>> 87432cd6fef1718546a74fa501d3d9adb08cf6ad
 
         reward = ((score_reward_value/MAX_SCORE)/2 + (horizontal_reward_value/MAX_DISTANCE)/2)*MAX_DISTANCE # this is because all the tuning etc. was to do with this value?
 
         if died:
             reward = self.death_reward()
-<<<<<<< HEAD
-=======
-            # reward = (DEATH_PENALTY/MAX_DISTANCE)*1000 # this is because all the tuning etc. was to do with the distance value? 
-            # lose reward if died to match distance method
-
-        # reward = 0 if reward < 0 else reward
->>>>>>> 87432cd6fef1718546a74fa501d3d9adb08cf6ad
 
         self.combined_reward = reward
 
@@ -413,17 +325,10 @@ class MarioEnv(gym.Env):
 
     def death_reward(self):
 
-<<<<<<< HEAD
         if self.death_penalty is None:
             return -(self.episode_cumulative_reward) # lose all data
         else:
             return self.death_penalty
-=======
-        if DEATH_PENALTY is None:
-            return -(self.episode_cumulative_reward) # lose all data
-        else:
-            return DEATH_PENALTY
->>>>>>> 87432cd6fef1718546a74fa501d3d9adb08cf6ad
 
     def map_to_retro_action(self, action):
         # this is to map from discrete action space to the retro env space, including the multi-press button options
