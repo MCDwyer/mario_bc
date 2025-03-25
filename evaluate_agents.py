@@ -236,6 +236,8 @@ def main():
 
     env = gym.make('MarioEnv-v0')
 
+    
+
     get_model_results(model_path, model_class, env)
 
     log_dir = f"training_logs/level_change_{LEVEL_CHANGE}/"
@@ -458,6 +460,23 @@ def main():
 def run_evaluations(saved_model_dir):
 
     env = gym.make('MarioEnv-v0')
+
+    value = ""
+
+    if EXP_RUN_ID[0].isdigit():
+        for letter in EXP_RUN_ID:
+            if letter.isdigit():
+                value += letter
+            else:
+                break
+        
+    if value.isnumeric():
+        value = -(int(value))
+        env.set_death_penalty(value)
+    else:
+        env.set_death_penalty(None)
+    
+    env.set_reward_function(EXP_RUN_ID)
 
     evaluated_files_filepath = f"{saved_model_dir}read_files_list.txt"
     concurrent_evaluations_filepath = f"{saved_model_dir}currently_being_evaluated.txt"

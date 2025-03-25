@@ -23,7 +23,7 @@ NO_CHANGE = "No Change"
 
 MAX_SCORE = 1000
 MAX_DISTANCE = 3840
-DEATH_PENALTY = -25
+DEATH_PENALTY = -100
 
 TRAINING_LEVELS = ["Level1-1", "Level2-1", "Level4-1", "Level5-1", "Level6-1", "Level8-1"]
 TEST_LEVELS = ["Level3-1", "Level7-1"]
@@ -54,6 +54,7 @@ class MarioEnv(gym.Env):
         self._use_training_levels = True
         self.unprocessed_obs = False
         self._n_stack = 1
+        self.death_penalty = -100
 
         self.stacked_obs = []
 
@@ -103,6 +104,10 @@ class MarioEnv(gym.Env):
         self._n_stack = value
         self.observation_space = gym.spaces.Box(low=0, high=255, shape=(84, 84, value), dtype=np.uint8) # greyscale 84x84??
 
+    def set_death_penalty(self, value):
+        self.death_penalty = value
+        print(f"Death penalty set to: {self.death_penalty}")
+
     def set_reward_function(self, exp_id):
         if "score" in exp_id.lower():
             self.reward_function = self.score_reward_function
@@ -115,7 +120,7 @@ class MarioEnv(gym.Env):
         else:
             self.reward_function = self.horizontal_reward_function
 
-        print(f"Reward function = {self.reward_function} and death penalty = {DEATH_PENALTY}")
+        print(f"Reward function = {self.reward_function} and death penalty = {self.death_penalty}")
 
         return
 
@@ -244,6 +249,7 @@ class MarioEnv(gym.Env):
 
         if info["death_log"]:
             if info["death_log"]["type"] == "timeout" or info["death_log"]["type"] == "fall": 
+                # print(f"death type: {info['death_log']['type']}")
                 return reward
 
         if state_change:
@@ -291,8 +297,7 @@ class MarioEnv(gym.Env):
         reward = current_score - self.score
 
         if died:
-            reward = self.death_reward()
-            reward = (reward/MAX_DISTANCE)*MAX_SCORE # this is because all the tuning etc. was to do with the distance values? 
+            reward = self.death_reward() # this is because all the tuning etc. was to do with the distance values? 
             # lose reward if died to match distance method
         # player_state == 11 is dying, 5 is level change type bits, 8 is normal play?
         elif state_change:
@@ -305,18 +310,14 @@ class MarioEnv(gym.Env):
 
     def combined_reward_function(self, info, state_change, died):
 
-        score_reward_value = self.score_reward_function(info, state_change, died, evaluation)
+        score_reward_value = self.score_reward_function(info, state_change, died)
 
-        horizontal_reward_value = self.horizontal_reward_function(info, state_change, died, evaluation)
+        horizontal_reward_value = self.horizontal_reward_function(info, state_change, died)
 
         reward = ((score_reward_value/MAX_SCORE)/2 + (horizontal_reward_value/MAX_DISTANCE)/2)*MAX_DISTANCE # this is because all the tuning etc. was to do with this value?
 
         if died:
             reward = self.death_reward()
-            # reward = (DEATH_PENALTY/MAX_DISTANCE)*1000 # this is because all the tuning etc. was to do with the distance value? 
-            # lose reward if died to match distance method
-
-        # reward = 0 if reward < 0 else reward
 
         self.combined_reward = reward
 
@@ -324,10 +325,10 @@ class MarioEnv(gym.Env):
 
     def death_reward(self):
 
-        if DEATH_PENALTY is None:
+        if self.death_penalty is None:
             return -(self.episode_cumulative_reward) # lose all data
         else:
-            return DEATH_PENALTY
+            return self.death_penalty
 
     def map_to_retro_action(self, action):
         # this is to map from discrete action space to the retro env space, including the multi-press button options

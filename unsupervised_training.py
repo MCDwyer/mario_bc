@@ -288,8 +288,22 @@ def main(agent_index):
         env.change_level_set(levels_to_use)
 
         print(f"Cross validation set {EXP_RUN_ID[-1]} used, training levels set to: {levels_to_use}.")
-        print("NOTE TO SELF -> CANT DO CROSS VALIDATION PROPERLY UNTIL BC DATASETS HAVE BEEN CHANGED - OTHERWISE TEST DATA WILL BE IN BC STAGE")
 
+    value = ""
+
+    if EXP_RUN_ID[0].isdigit():
+        for letter in EXP_RUN_ID:
+            if letter.isdigit():
+                value += letter
+            else:
+                break
+        
+    if value.isnumeric():
+        value = -(int(value))
+        env.set_death_penalty(value)
+    else:
+        env.set_death_penalty(None)
+    
     env.set_reward_function(EXP_RUN_ID)
     
     if MODEL_PARAMETERS:
