@@ -200,8 +200,26 @@ class CustomActorCriticCnnPolicy(ActorCriticCnnPolicy):
 
     def bc_training(self, observations, actions, num_epochs, batch_size, device="cpu") -> None:
 
+        # Handles lists, NumPy arrays, or tensors
+        first_action = expert_actions[0]
+
+        if isinstance(first_action, (list, np.ndarray, torch.Tensor)) and len(first_action) > 1:
+            use_probs = True
+            print("Using probabilities over actions for training.")
+
+        else:
+            use_probs = False
+            print("Using discrete actions for training.")
+
+        if use_probs:
+            expert_actions = torch.tensor(actions, dtype=torch.float32).to(device)  # shape: [N, 13]
+            self.criterion = nn.KLDivLoss(reduction="batchmean")
+        else:
+            expert_actions = torch.tensor(actions, dtype=torch.long).to(device)  # shape: [N]
+            self.criterion = nn.CrossEntropyLoss()
+
         # Expert data should not require gradients
-        expert_actions = torch.tensor(actions, dtype=torch.long).to(device)
+        # expert_actions = torch.tensor(actions, dtype=torch.long).to(device)
         expert_observations = torch.tensor(observations, dtype=torch.float32).to(device)
 
         dataset_size = len(observations)
@@ -224,13 +242,17 @@ class CustomActorCriticCnnPolicy(ActorCriticCnnPolicy):
                 obs_batch = expert_obs[:batch_size]
                 action_batch = expert_acts[:batch_size]
 
-                # Forward pass
-                pred_actions = self.bc_actions(obs_batch)
+                if use_probs:
+                    dist = self.get_distribution(obs_batch)
+                    pred_probs = dist.distribution.probs
+                    pred_actions = torch.log(pred_probs + 1e-8)
+                else:
+                    # Forward pass
+                    pred_actions = self.bc_actions(obs_batch)
 
-                if isinstance(self.action_space, spaces.Discrete):
-                    # Convert discrete action from float to long
-                    action_batch = action_batch.long().flatten()
-                    # pred_actions = pred_actions.long().flatten()
+                    if isinstance(self.action_space, spaces.Discrete):
+                        # Convert discrete action from float to long
+                        action_batch = action_batch.long().flatten()
 
                 loss = self.criterion(pred_actions, action_batch)
 
@@ -245,6 +267,7 @@ class CustomActorCriticCnnPolicy(ActorCriticCnnPolicy):
                 expert_acts = expert_acts[batch_size:]
 
             print(f"Epoch [{epoch+1}/{num_epochs}], Loss: {epoch_loss/num_batches:.4f}")
+
 
     # def offline_rl_training(self, observations, actions, rewards, num_epochs, batch_size, device="cpu"):
 

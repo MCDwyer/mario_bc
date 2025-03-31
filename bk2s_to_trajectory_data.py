@@ -8,24 +8,34 @@ import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 import cv2
 import pickle
+from collections import Counter
+import gymnasium as gym
+from gymnasium.envs.registration import register
+from GymEnvs.retro_env_wrapper import ReplayMarioEnv
+
+
+register(
+    id='MarioEnv-v0',
+    entry_point='GymEnvs.retro_env_wrapper:MarioEnv',
+)
 
 MAX_X = 3840
 MAX_Y = 768
 MARIO_X = 13
 MARIO_Y = 16
 
+MAX_SCORE = 1000
+MAX_DISTANCE = 3840
+
 DISTANCE_THRESHOLD = MAX_X/2
 
 COLOUR_SCHEME = px.colors.qualitative.Plotly
 
-EXP_ID = "tuned_exp_params"
-TRAINING_REWARD = "Distance"
-
-# EXP_ID = "score_tuned_params"
-# TRAINING_REWARD = "Score"
-
-# EXP_ID = "combined_tuned_params"
-# TRAINING_REWARD = "Combined"
+FORCE_RELOAD = False
+GENERATE_DATASETS = False
+PLOTS = True
+PLOT_HEATMAPS = True
+MAKE_TABLE = True
 
 def process_observation(obs):
     # Convert the frame to grayscale
@@ -76,6 +86,105 @@ def generate_dataset_from_state_actions(dir, filename, level, all_states, all_ac
         print(f"Dataset saved to: {filepath}.pkl")
     
     return
+
+def extract_info_from_bk2s_test(bk2_file, level):
+    try:
+        movie = retro.Movie(bk2_file)
+    except:
+        print(bk2_file)
+        movie = retro.Movie(bk2_file)
+
+    movie.step()
+
+    env = ReplayMarioEnv(game=movie.get_game(), state=level)
+    env.initial_state = movie.get_state()
+
+    prev_state = env.reset()
+
+    trajectories = []
+    action_distribution = np.zeros(13)
+    actions = []
+    states = []
+    # reward = 0
+    total_dist_reward = 0
+    total_score_reward = 0
+    total_combined_reward = 0
+
+    step = 0
+    max_score = 0
+
+    prev_score = 0
+
+    stacked_actions = []
+
+    while movie.step():
+        keys = []
+        for i in range(env.num_buttons):
+            keys.append(movie.get_key(i, 0))
+
+        stacked_actions.append(copy.deepcopy(keys))
+        step += 1
+
+        # if 'death_log' in info:
+        #     if info['death_log']:
+        #         if info["death_log"]['info']["player_state"] in {4, 6, 8, 11}:
+        #             print(info['death_log'])
+
+        # if step%4 == 0 or done: # only want every 4 timesteps to match agents
+        if len(stacked_actions) == 4:
+            # print(stacked_actions)
+            obs, reward, done, _, info = env.step(stacked_actions)
+            x = info["x_frame"]*256 + info["x_position_in_frame"]
+
+            y = ((info["y_frame"]*256) + info["y_position_in_frame"])
+
+            action = map_from_retro_action(keys)
+            trajectories.append([x, y])
+            processed_obs = process_observation(prev_state)
+            states.append(processed_obs)
+            actions.append(action)
+            action_distribution[int(action)] += 1
+            # next_states.append(process_observation(obs))
+            # infos.append(info)
+
+            dist_reward = env.dist_reward
+            score_reward = env.score_reward
+            combined_reward = env.combined_reward
+            total_dist_reward += dist_reward
+            total_score_reward += int(score_reward)
+            total_combined_reward += combined_reward
+
+            prev_state = obs
+            prev_score = info["score"]
+
+            if prev_score > max_score:
+                max_score = prev_score
+
+            if dist_reward < -2000:
+                # print(reward, score_reward, dist_reward)
+                print(f"Why isn't this working!!!! player state = {info['player_state']}")
+
+            stacked_actions = []
+
+    print(step)
+    env.close()
+
+    # check that there is actually a trajectory here:
+    if trajectories:
+        trajectories = np.array(trajectories)
+
+        x_coords = trajectories[:, 0]
+        y_coords = trajectories[:, 1]
+
+        if len(set(x_coords)) == 1 or len(set(actions)) == 1:
+            return None, None, None, None, None, None, None, None, None, None
+
+        death_log = info["death_log"] if "death_log" in info else {}
+        death_type = death_log["type"] if "type" in death_log else None
+
+        return trajectories, states, actions, total_dist_reward, total_score_reward, total_combined_reward, action_distribution, max_score, death_type, death_log
+    
+    return None, None, None, None, None, None, None, None, None, None
 
 def extract_info_from_bk2s(bk2_file, level):
     try:
@@ -184,12 +293,13 @@ def extract_info_from_bk2s(bk2_file, level):
             else:
                 dist_reward = (x - prev_position)
                 score_reward = ((int(info['score'])*10) - prev_score)
-                # score_reward = ((info['score']) - prev_score)
+            # score_reward = ((info['score']) - prev_score)
+            # combined_reward = env.combined_reward
                 
 
             total_dist_reward += dist_reward
             total_score_reward += score_reward
-            total_combined_reward += (dist_reward/2 + score_reward/2)*MAX_X
+            total_combined_reward += ((score_reward/MAX_SCORE)/2 + (dist_reward/MAX_DISTANCE)/2)*MAX_DISTANCE 
 
             prev_position = x
             prev_score = int(info['score'])*10
@@ -331,7 +441,11 @@ def load_in_agent_data(agent_dir, level, check_for=""):
                                 "combined_rewards": [],
                                 "action_distributions": [],
                                 "max_score": [],
-                                "death_types": {"fall": 0, "enemy": 0, "flagpole": 0, "timeout": 0},
+                                "fall_ends": 0,
+                                "enemy_ends": 0,
+                                "timeout_ends": 0,
+                                "flagpole_ends": 0,
+                                # "death_types": {"fall": 0, "enemy": 0, "flagpole": 0, "timeout": 0},
                                 "death_logs": [],
                                 }
 
@@ -352,12 +466,13 @@ def load_in_agent_data(agent_dir, level, check_for=""):
                     print(full_path)
                 else:
                     for df_key in agents[agent_type]:
-                        if df_key == "death_types":
-                            agents[agent_type][df_key] = {key: df_dict[df_key][key] + agents[agent_type][df_key][key] for key in agents[agent_type][df_key]}
+                        if df_key.endswith("ends"):
+                            value = int(df_dict[df_key][0]) # pretty sure that it's duplicating the value for each trial for some reason, so only need one of them (could be any of them as they;re all the same value)
+                            agents[agent_type][df_key] = value + agents[agent_type][df_key]#[key] for key in agents[agent_type][df_key]}
                         else:                                                         
                             df_list = [value for _, value in sorted(df_dict[df_key].items())]
                             agents[agent_type][df_key] = agents[agent_type][df_key] + df_list
-    
+        
     return agents
 
 def get_trajectory_metrics(trajectory, infos=None):
@@ -415,10 +530,9 @@ def compute_statistics(df):
         # Extract rewards (handle both list & dict cases)
         results[key] = {}
 
-        dist_rewards = None
-        score_rewards = None
-        
-        for reward_type in ["dist_rewards", "score_rewards", "combined_rewards"]:
+        total_number_of_attempts = 0
+
+        for reward_type in ["dist_rewards", "score_rewards", "combined_rewards", "max_score"]:
             rewards_data = df.loc[reward_type, key]
             if isinstance(rewards_data, dict):  # If rewards_data is a dict, extract values
                 rewards = np.array(list(rewards_data.values()))
@@ -432,6 +546,7 @@ def compute_statistics(df):
 
             results[key][f"mean_{reward_type}"] = mean_reward
             results[key][f"std_{reward_type}"] = std_reward
+            total_number_of_attempts = len(rewards)
             
         # Extract action distributions dictionary
         action_dist_data = df.loc["action_distributions", key]
@@ -444,6 +559,58 @@ def compute_statistics(df):
 
 
         results[key]["combined_action_distribution"] = combined_action_dist
+
+        results[key]["end_reasons_percentage"] = {"fall": 0.0, "enemy": 0.0, "flagpole": 0.0, "timeout": 0.0}
+
+        for end_type in ["fall_ends", "enemy_ends", "timeout_ends", "flagpole_ends"]:
+            end_data = df.loc[end_type, key]
+            if isinstance(end_data, dict):  # If rewards_data is a dict, extract values
+                end_data = np.array(list(end_data.values()))
+            elif isinstance(end_data, list):  # If already a list, convert to NumPy array
+                end_data = np.array(end_data)
+            end_type_key = end_type.split("_")[0]
+            results[key]["end_reasons_percentage"][end_type_key] = np.sum(end_data)/total_number_of_attempts
+
+        traj_data = df.loc["trajectories", key]
+        if isinstance(traj_data, dict):  # If rewards_data is a dict, extract values
+            traj_data = np.array(list(traj_data.values()))
+        elif isinstance(traj_data, list):  # If already a list, convert to NumPy array
+            traj_data = np.array(traj_data)
+        
+        max_horizontal = []
+        max_vertical = []
+        
+        for trajectory in traj_data:
+            trajectory = np.array(trajectory)
+            max_horizontal.append(np.max(trajectory[:, 0]))
+            max_vertical.append(np.max(trajectory[:, 1]))
+
+        results[key][f"mean_max_horizontal_position"] = np.mean(np.array(max_horizontal))
+        results[key][f"std_max_horizontal_position"] = np.std(np.array(max_horizontal))
+        results[key][f"mean_max_vertical_position"] = np.mean(np.array(max_vertical))
+        results[key][f"std_max_vertical_position"] = np.std(np.array(max_vertical))
+
+        time_taken = []
+        final_positions = []
+
+        death_logs = df.loc["death_logs", key]
+        if isinstance(death_logs, dict):  # If rewards_data is a dict, extract values
+            death_logs = np.array(list(death_logs.values()))
+        elif isinstance(death_logs, list):  # If already a list, convert to NumPy array
+            death_logs = np.array(death_logs)
+        
+        for log in death_logs:
+            if "info" in log:
+                info = log["info"]
+                x = info["x_frame"]*256 + info["x_position_in_frame"]
+                y = ((info["y_frame"]*256) + info["y_position_in_frame"])
+
+                final_positions.append([x, y])
+                time_taken.append((400 - info["time"]))
+
+        results[key]["end_positions"] = final_positions
+        results[key][f"mean_time_taken"] = np.mean(time_taken)
+        results[key][f"std_time_taken"] = np.std(time_taken)
 
     return results
 
@@ -466,6 +633,9 @@ def plot_patterns(names_list):
             pattern_shape_sequence.append("x")
             marker_shapes.append("x")
 
+        if "best" in agent_type.lower():
+            marker_shapes[-1] = "star"
+
         if "nonexpert" in agent_type.lower():
             colours.append(COLOUR_SCHEME[0])
         elif "expert" in agent_type.lower():
@@ -478,17 +648,40 @@ def plot_patterns(names_list):
     return colours, pattern_shape_sequence, marker_shapes
 
 
-def mean_rewards_plot(df, level, with_errors=True, plot_dir="", training_reward=TRAINING_REWARD):
-
-    sig_figs = 3
+def mean_plots(df, level, with_errors=True, plot_dir=""):
     all_rewards_types = []
+    other_figs = []
 
     for row_name in df.index.tolist():
         if "mean" in row_name:
-            clean_row_name = row_name[len("mean_"):]
-            all_rewards_types.append(clean_row_name)
+            if "rewards" in row_name:
+                clean_row_name = row_name[len("mean_"):]
+                all_rewards_types.append(clean_row_name)
+            else:
+                clean_row_name = row_name[len("mean_"):]
+                other_figs.append(clean_row_name)
 
-    subplot_fig = make_subplots(3, 1, subplot_titles=all_rewards_types, shared_xaxes=True, specs = [[{}], [{}], [{}]],
+    _mean_plots(df, level, with_errors, plot_dir, TRAINING_REWARD, "Reward", all_rewards_types)
+    _mean_plots(df, level, with_errors, plot_dir, TRAINING_REWARD, "Other Metrics", other_figs)
+
+def _mean_plots(df, level, with_errors, plot_dir, training_reward, name, row_list):
+
+    sig_figs = 3
+    # all_rewards_types = []
+    # other_figs = []
+
+    # for row_name in df.index.tolist():
+    #     if "mean" in row_name:
+    #         if "rewards" in row_name:
+    #             clean_row_name = row_name[len("mean_"):]
+    #             all_rewards_types.append(clean_row_name)
+    #         else:
+    #             clean_row_name = row_name[len("mean_"):]
+    #             other_figs.append(clean_row_name)
+
+    specs = [[{}] for _ in range(len(row_list))]
+
+    subplot_fig = make_subplots(len(row_list), 1, subplot_titles=row_list, shared_xaxes=True, specs = specs,
                           vertical_spacing = 0.05)
 
     colours = []
@@ -496,7 +689,7 @@ def mean_rewards_plot(df, level, with_errors=True, plot_dir="", training_reward=
 
     colours, pattern_shape_sequence, _ = plot_patterns(df.columns.tolist())
 
-    for i, reward_type in enumerate(all_rewards_types):
+    for i, reward_type in enumerate(row_list):
         # Extract mean and std deviation values
         mean_rewards = df.loc[f"mean_{reward_type}"]
         std_rewards = df.loc[f"std_{reward_type}"]
@@ -504,8 +697,8 @@ def mean_rewards_plot(df, level, with_errors=True, plot_dir="", training_reward=
         # Create a DataFrame for Plotly
         plot_df = pd.DataFrame({
             "Agent Type": mean_rewards.index,  # Column names as agent types
-            "Mean Reward": mean_rewards.values,
-            "Std Reward": std_rewards.values
+            "Mean": mean_rewards.values,
+            "Std": std_rewards.values
         })
 
         if with_errors:
@@ -513,10 +706,10 @@ def mean_rewards_plot(df, level, with_errors=True, plot_dir="", training_reward=
             fig = px.bar(
                 plot_df,
                 x="Agent Type",
-                y="Mean Reward",
-                error_y="Std Reward",
-                title=f"Mean Reward ({reward_type}) with Standard Deviation per Agent for Level: {level}",
-                labels={"Mean Reward": "Mean Reward", "Agent Type": "Agent Type"},
+                y="Mean",
+                error_y="Std",
+                title=f"Mean {name} ({reward_type}) with Standard Deviation per Agent for Level: {level}",
+                labels={"Mean": "Mean", "Agent Type": "Agent Type"},
                 color="Agent Type",
                 color_discrete_sequence = colours,
                 pattern_shape="Agent Type",
@@ -527,29 +720,29 @@ def mean_rewards_plot(df, level, with_errors=True, plot_dir="", training_reward=
             subplot_fig.add_trace(
                 go.Bar(
                     x=plot_df["Agent Type"],
-                    y=plot_df["Mean Reward"],
-                    error_y=dict(type='data', array=plot_df["Std Reward"], visible=True),
+                    y=plot_df["Mean"],
+                    error_y=dict(type='data', array=plot_df["Std"], visible=True),
                     # name=reward_type,
                     marker=dict(
                         color=colours,
                         pattern_shape=pattern_shape_sequence,  # Different patterns per bar
                         pattern_fgcolor="grey"
                     ),
-                    text=[f"{val:.{sig_figs}g}" for val in plot_df["Mean Reward"]],
+                    text=[f"{val:.{sig_figs}g}" for val in plot_df["Mean"]],
                     textposition='outside',
                     showlegend=False),
                     row=(i+1),
                     col=1)
 
-            plot_path = f"{level}_mean_{reward_type}_with_errors"
+            plot_path = f"{level}_mean_{name}_{reward_type}_with_errors"
         else:
             # Create bar plot with error bars
             fig = px.bar(
                 plot_df,
                 x="Agent Type",
-                y="Mean Reward",
-                title=f"Mean Reward ({reward_type}) per Agent for Level: {level}",
-                labels={"Mean Reward": "Mean Reward", "Agent Type": "Agent Type"},
+                y="Mean",
+                title=f"Mean {name} ({reward_type}) per Agent for Level: {level}",
+                labels={"Mean": "Mean", "Agent Type": "Agent Type"},
                 color="Agent Type",
                 color_discrete_sequence = colours,
                 pattern_shape="Agent Type",
@@ -560,25 +753,25 @@ def mean_rewards_plot(df, level, with_errors=True, plot_dir="", training_reward=
             subplot_fig.add_trace(
                 go.Bar(
                     x=plot_df["Agent Type"],
-                    y=plot_df["Mean Reward"],
+                    y=plot_df["Mean"],
                     # name=reward_type,
                     marker=dict(
                         color=px.colors.qualitative.Pastel[:len(df.columns.tolist())],
                         pattern_shape=pattern_shape_sequence,  # Different patterns per bar
                         pattern_fgcolor="grey"
                     ),
-                    text=[f"{val:.{sig_figs}g}" for val in plot_df["Mean Reward"]],
+                    text=[f"{val:.{sig_figs}g}" for val in plot_df["Mean"]],
                     textposition="outside",
                     showlegend=False),
                     row=(i+1),
                     col=1)
 
-            plot_path = f"{level}_mean_{reward_type}"
+            plot_path = f"{level}_mean_{name}_{reward_type}"
 
         fig.update_layout(showlegend=False)#, textposition="outside", cliponaxis=False)
         plotly_save_with_dir_check(fig, plot_dir, plot_path)
 
-    plot_path = f"{level}_mean_rewards"
+    plot_path = f"{level}_mean_{name}"
     plot_path += "_with_errors" if with_errors else ""
     plot_path += "_subplot"
 
@@ -586,7 +779,7 @@ def mean_rewards_plot(df, level, with_errors=True, plot_dir="", training_reward=
         margin=dict(t=50, b=40, l=30, r=10),  # Reduce top margin (t), adjust others as needed
         height=800,  # Increase figure height
         width=800,   # Increase figure width
-        title_text=f"Mean Rewards for Level: {level} - Trained with {training_reward} reward",
+        title_text=f"Mean {name} for Level: {level} - Trained with {training_reward} reward",
     )
 
     plotly_save_with_dir_check(subplot_fig, plot_dir, plot_path)
@@ -797,16 +990,11 @@ def plot_level_scatters(statistic_dict, plot_dir, agent_types, plot_error_bars=F
         filename = f"{reward_type}_per_level_scatter"
         plotly_save_with_dir_check(fig, plot_dir, filename)
 
-FORCE_RELOAD = True
-GENERATE_DATASETS = True
-PLOTS = False
-PLOT_HEATMAPS = False
-MAKE_TABLE = False
-
 def main():
 
     demo_bk2_dir = "/Users/mdwyer/Documents/Code/PhD_Mario_Work/mario/user_bk2s"
     demo_dir = "/Users/mdwyer/Documents/Code/PhD_Mario_Work/mario_bc/demo_pickle_files/"
+    # demo_dir = f"/Users/mdwyer/Documents/Code/PhD_Mario_Work/mario_bc/{EXP_ID}/"
     agent_eval_dir = f"/Users/mdwyer/Documents/Code/PhD_Mario_Work/mario_bc/training_logs/experiments/{EXP_ID}/saved_models/level_change_random"
     agent_dir = f"/Users/mdwyer/Documents/Code/PhD_Mario_Work/mario_bc/{EXP_ID}/"
     plot_dir = f"{agent_dir}plots/"
@@ -873,7 +1061,7 @@ def main():
                                             "flagpole_ends": all_death_types["flagpole"],
                                             "death_logs": all_death_logs
                                             }
-            print(all_death_types)
+            # print(all_death_types)
 
             df = pd.DataFrame.from_dict(results[level]["amalgam demo data"])
 
@@ -923,8 +1111,8 @@ def main():
             for key in nonexp_death_types:
                 results[level]["nonexpert demo data"][f"{key}_ends"] = nonexp_death_types[key]
             
-            print(exp_death_types)
-            print(nonexp_death_types)
+            # print(exp_death_types)
+            # print(nonexp_death_types)
 
             df = pd.DataFrame.from_dict(results[level]["expert demo data"])
             dataframe_saving(df, expert_demo_filename)
@@ -973,7 +1161,7 @@ def main():
 
             df = pd.DataFrame.from_dict(statistics[level])
             # statistics[level] = df
-            print(df.head())
+            print(df)
 
             column_names = {}
 
@@ -987,6 +1175,9 @@ def main():
                 elif 'demo' in name:
                     split_name = name.split(' ')
                     column_names[name] = "Demo_Data_" + split_name[0]
+                elif 'best' in name:
+                    split_name = name[(len('best_')):].split('_20M')
+                    column_names[name] = name[:4] + "_" + split_name[0]
                 else:
                     split_name = name[(len('PPO_')):].split('_20M')
                     column_names[name] = name[:3] + "_" + split_name[0]
@@ -1000,7 +1191,7 @@ def main():
             statistics[level] = df
 
         if PLOTS:
-            mean_rewards_plot(df, level, True, plot_dir)
+            mean_plots(df, level, True, plot_dir)
             # # mean_rewards_plot(df, level, False, plot_dir)
             plot_action_distributions(df, level, plot_dir)
 
@@ -1052,6 +1243,9 @@ def main():
                 elif 'demo' in name:
                     split_name = name.split(' ')
                     column_names[name] = "Demo_Data_" + split_name[0]
+                elif 'best' in name:
+                    split_name = name[(len('best_')):].split('_20M')
+                    column_names[name] = name[:4] + "_" + split_name[0]
                 else:
                     split_name = name[(len('PPO_')):].split('_20M')
                     column_names[name] = name[:3] + "_" + split_name[0]
@@ -1070,7 +1264,6 @@ def main():
                 else:
                     plot_mario_heatmap(agent_trajectories, plot_dir, level, f"{column_names[agent_type]}")
 
-
     if PLOTS:
         agent_types = []
 
@@ -1087,4 +1280,18 @@ def main():
             with open(f"{plot_dir}mean_reward_table_{table_type}.html", "w", encoding="utf-8") as f:
                 f.write(table_data[table_type])
 
-main()
+
+for exp_id in ["25_tuned_exp_params", "100_tuned_exp_params", "1000_tuned_exp_params", "100_score_tuned_params", "100_combined_tuned_params", "25_score_tuned_exp_params", "25_combined_tuned_params"]:
+    EXP_ID = exp_id
+
+    if "score" in exp_id:
+        TRAINING_REWARD = "Score"
+    elif "combined" in exp_id:
+        TRAINING_REWARD = "Combined"
+    else:
+        TRAINING_REWARD = "Distance"
+
+    main()
+
+# EXP_ID = "25_tuned_exp_params"
+# TRAINING_REWARD = "Distance"
