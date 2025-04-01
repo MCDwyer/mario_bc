@@ -61,6 +61,36 @@ def pretrain_actor_critic_with_bc(model, actions, observations, lr, num_epochs, 
 
     return model
 
+def pretrain_actor_critic_with_offline_rl(model, observations, actions, rewards, next_obs, dones, lr, num_epochs, batch_size, device='cpu'):
+
+    model_lr = copy.deepcopy(model.learning_rate)
+    model.learning_rate = lr
+
+    policy = CustomActorCriticCnnPolicy(model)
+
+    policy.load_state_dict(model.policy.state_dict())
+
+    if compare_params(model.policy.state_dict(), policy.state_dict()):
+        print("Custom policy initialised")
+
+    policy.offline_actor_critic_training(observations, actions, rewards, next_obs, dones, batch_size, num_epochs, device)
+
+    policy_params_before = copy.deepcopy(model.policy.state_dict())
+
+    if not compare_params(policy_params_before, policy.state_dict()):
+        print("Custom policy weights have been updated.")
+    else:
+        print("Custom policy weights have NOT been updated.")
+
+    model.policy.load_state_dict(policy.state_dict())
+
+    if compare_params(model.policy.state_dict(), policy.state_dict()):
+        print("Custom policy copied to model successfully.")
+
+    model.learning_rate = model_lr
+
+    return model
+
 def pretrain_dqn_with_bc(model, actions, observations, lr, num_epochs, batch_size, device='cpu'):
     model.policy.train()  # Switch to training mode
     optimizer = torch.optim.Adam(model.policy.parameters(), lr=lr)
@@ -151,10 +181,15 @@ def pretrain_sac_with_bc(model, actions, observations, lr, num_epochs, batch_siz
 
     return model
 
-def load_data(training_data_name, levels, n_stack=1):
+def load_data(training_data_name, levels, n_stack=1, offline_rl=False):
 
     all_actions = None
     all_observations = None
+
+    if offline_rl:
+        all_next_obs = None
+        all_rewards = None
+        all_dones = None
 
     for level in levels:
         full_filepath = f"{FILEPATH}{level}_{training_data_name}.pkl"
@@ -162,7 +197,10 @@ def load_data(training_data_name, levels, n_stack=1):
         with open(full_filepath, 'rb') as file:
             loaded_data = pickle.load(file)
 
-        actions, observations = zip(*loaded_data)
+        if not offline_rl:
+            actions, observations = zip(*loaded_data)
+        else:
+            observations, actions, rewards, next_observations, dones = zip(*loaded_data)
 
         print(f"Loading {level} demo data from {full_filepath}.")
 
@@ -175,79 +213,42 @@ def load_data(training_data_name, levels, n_stack=1):
             observations = observations.reshape(observations.shape[0], observations.shape[3], observations.shape[1], observations.shape[2])
             all_observations = observations
 
+            if offline_rl:
+                next_observations = np.array(next_observations)
+                next_observations = next_observations.reshape(next_observations.shape[0], next_observations.shape[3], next_observations.shape[1], next_observations.shape[2])
+                all_next_obs = next_observations
+                all_rewards = np.array(rewards)
+                all_dones = np.array(dones)
+
         else:
             all_actions = np.concatenate((all_actions, np.array(actions)))
             observations = np.array(observations)
             observations = observations.reshape(observations.shape[0], observations.shape[3], observations.shape[1], observations.shape[2])
             all_observations = np.concatenate((all_observations, observations))
+
+            if offline_rl:
+                next_observations = np.array(next_observations)
+                next_observations = next_observations.reshape(next_observations.shape[0], next_observations.shape[3], next_observations.shape[1], next_observations.shape[2])
+                all_next_obs = np.concatenate((all_next_obs, next_observations))
+                all_rewards = np.concatenate((all_rewards, np.array(rewards)))
+                all_dones = np.concatenate((all_dones, np.array(dones)))
     
+    if offline_rl:
+        return all_observations, all_actions, all_rewards, all_next_obs, all_dones
+
     return all_actions, all_observations
 
-# def load_data(filepath, n_stack=1):
-#     # load in data
-#     with open(filepath, 'rb') as file:
-#         loaded_data = pickle.load(file)
-
-#     trajectories = np.array(loaded_data, dtype=object)
-#     # [obs, act, done, next_obs, infos, next_infos]
-
-#     observations = []
-#     actions = []
-#     next_observations = []
-#     rewards = []
-
-#     stacked_obs = []
-
-#     # expert_observations = expert_observations.permute(0, 3, 1, 2)  # From [batch, height, width, channels] to [batch, channels, height, width]
-    
-#     for i, trajectory in enumerate(trajectories):
-
-#         obs = trajectory[0]
-#         action = trajectory[1]
-#         done = trajectory[2]
-#         next_obs = trajectory[3]
-#         info = trajectory[4]
-#         next_info = trajectory[5]
-
-#         stacked_obs.append(obs)
-
-#         if len(stacked_obs) == n_stack:
-#             # add stacked_obs to observations
-#             stacked_obs_arr = np.array(stacked_obs)
-#             stacked_obs_arr = stacked_obs_arr.reshape(n_stack, 84, 84)
-
-#             observations.append(stacked_obs_arr)
-
-#             next_obs_arr = np.array(next_obs)
-#             next_obs_arr = next_obs_arr.reshape(1, 84, 84)
-#             next_observations.append(next_obs_arr)
-
-#             actions.append(action)
-            
-#             reward = calc_reward(info, next_info, done)
-#             rewards.append(reward)
-
-#             if done:
-#                 # end of attempt
-#                 stacked_obs = []
-
-#             else:
-#                 # remove first bit of stacked_obs
-#                 stacked_obs.pop(0)
-
-#     # for some reason have to do it this way, otherwise it gets upset
-#     observations = np.array(observations)
-#     actions = np.array(actions)
-#     next_observations = np.array(next_observations)
-#     rewards = np.array(rewards)
-
-#     return actions, observations, next_observations, rewards
 
 def behavioural_cloning(model_name, model, levels, training_data_name, model_path, lr=5e-3, num_epochs=10, batch_size=128, n_stack=1):
 
     # actions, observations, next_observations, rewards = load_data(filepath, n_stack)
 
-    actions, observations = load_data(training_data_name, levels, n_stack)
+    offline_rl = True if "offline" in training_data_name else False
+
+    if offline_rl:
+        observations,actions, rewards, next_obs, dones = load_data(training_data_name, levels, n_stack, offline_rl=True)
+    else:
+        actions, observations = load_data(training_data_name, levels, n_stack)
 
     print("BC Training Info")
     print(f"Model: {model_name}, BC dataset name: {training_data_name}")
@@ -272,8 +273,12 @@ def behavioural_cloning(model_name, model, levels, training_data_name, model_pat
     # print(f"\tRewards: {rewards.shape}")
 
     if model_name == "PPO":
-        print("PPO behaviour cloning starting")
-        model = pretrain_actor_critic_with_bc(model, actions, observations, lr, num_epochs, batch_size)
+        if offline_rl:
+            print("PPO offline RL starting")
+            model = pretrain_actor_critic_with_offline_rl(model, observations, actions, rewards, next_obs, dones, lr, num_epochs, batch_size)
+        else:
+            print("PPO behaviour cloning starting")
+            model = pretrain_actor_critic_with_bc(model, actions, observations, lr, num_epochs, batch_size)
     elif model_name == "DQN":
         print("DQN behaviour cloning starting")
         model = pretrain_dqn_with_bc(model, actions, observations, lr, num_epochs, batch_size)

@@ -107,7 +107,23 @@ class CustomDQNPolicy(CnnPolicy):
             print(f"Epoch [{epoch+1}/{num_epochs}], Loss: {epoch_loss/num_batches:.4f}")
 
         
+class OfflineReplayBuffer:
+    def __init__(self, observations, actions, rewards, next_observations, dones):
+        self.obs = torch.tensor(observations, dtype=torch.float32)
+        self.acts = torch.tensor(actions, dtype=torch.long)
+        self.rews = torch.tensor(rewards, dtype=torch.float32)
+        self.next_obs = torch.tensor(next_observations, dtype=torch.float32)
+        self.dones = torch.tensor(dones, dtype=torch.float32)
 
+    def sample(self, batch_size):
+        idxs = torch.randint(0, len(self.obs), (batch_size,))
+        return (
+            self.obs[idxs],
+            self.acts[idxs],
+            self.rews[idxs],
+            self.next_obs[idxs],
+            self.dones[idxs],
+        )
 
 class CustomActorCriticCnnPolicy(ActorCriticCnnPolicy):
     def __init__(self, rl_agent):
@@ -182,7 +198,11 @@ class CustomActorCriticCnnPolicy(ActorCriticCnnPolicy):
             rl_policy.optimizer_kwargs,
         )
 
-        self.criterion = nn.CrossEntropyLoss()
+        self.bc_criterion = nn.CrossEntropyLoss()
+        self.bc_probs_criterion = nn.KLDivLoss(reduction="batchmean")
+
+        self.v_criterion = nn.MSELoss()
+
     
     def bc_actions(self, obs):
 
@@ -213,10 +233,10 @@ class CustomActorCriticCnnPolicy(ActorCriticCnnPolicy):
 
         if use_probs:
             expert_actions = torch.tensor(actions, dtype=torch.float32).to(device)  # shape: [N, 13]
-            self.criterion = nn.KLDivLoss(reduction="batchmean")
+            criterion = self.bc_probs_criterion
         else:
             expert_actions = torch.tensor(actions, dtype=torch.long).to(device)  # shape: [N]
-            self.criterion = nn.CrossEntropyLoss()
+            criterion = self.bc_criterion
 
         # Expert data should not require gradients
         # expert_actions = torch.tensor(actions, dtype=torch.long).to(device)
@@ -254,7 +274,7 @@ class CustomActorCriticCnnPolicy(ActorCriticCnnPolicy):
                         # Convert discrete action from float to long
                         action_batch = action_batch.long().flatten()
 
-                loss = self.criterion(pred_actions, action_batch)
+                loss = criterion(pred_actions, action_batch)
 
                 # Optimization step
                 self.optimizer.zero_grad()
@@ -268,4 +288,56 @@ class CustomActorCriticCnnPolicy(ActorCriticCnnPolicy):
 
             print(f"Epoch [{epoch+1}/{num_epochs}], Loss: {epoch_loss/num_batches:.4f}")
 
+    def offline_actor_critic_training(self, observations, actions, rewards, next_observations, dones, batch_size, num_epochs, device="cpu", gamma=0.99,):
 
+        replay_buffer = OfflineReplayBuffer(observations, actions, rewards, next_observations, dones)
+        
+        self.to(device)
+        self.set_training_mode(True)
+
+        optimizer_pi = torch.optim.Adam(self.parameters(), lr=1e-4)
+        optimizer_v = torch.optim.Adam(self.parameters(), lr=1e-4)
+
+        for epoch in range(num_epochs):
+            epoch_actor_loss = 0.0
+            epoch_critic_loss = 0.0
+            num_batches = len(replay_buffer.obs) // batch_size
+
+            for _ in range(num_batches):
+                obs, act, rew, next_obs, done = replay_buffer.sample(batch_size)
+                obs = obs.to(device)
+                act = act.to(device)
+                rew = rew.to(device)
+                next_obs = next_obs.to(device)
+                done = done.to(device)
+
+                # --- Critic update (value function) ---
+                with torch.no_grad():
+                    # Target: r + γ * V(s')
+                    next_values = self.value_net(self.extract_features(next_obs))
+                    target_values = rew + gamma * (1 - done) * next_values.squeeze(1)
+
+                predicted_values = self.value_net(self.extract_features(obs)).squeeze(1)
+                critic_loss = self.v_criterion(predicted_values, target_values)
+
+                optimizer_v.zero_grad()
+                critic_loss.backward()
+                optimizer_v.step()
+
+                # --- Advantage estimation ---
+                with torch.no_grad():
+                    advantages = target_values - predicted_values.detach()
+
+                # --- Actor update ---
+                dist = self.get_distribution(obs)
+                log_probs = dist.log_prob(act)
+                actor_loss = -(log_probs * advantages).mean()
+
+                optimizer_pi.zero_grad()
+                actor_loss.backward()
+                optimizer_pi.step()
+
+                epoch_actor_loss += actor_loss.item()
+                epoch_critic_loss += critic_loss.item()
+
+            print(f"Epoch {epoch+1} | Actor Loss: {epoch_actor_loss / num_batches:.4f} | Critic Loss: {epoch_critic_loss / num_batches:.4f}")
