@@ -8,11 +8,12 @@ import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 import cv2
 import pickle
-from collections import Counter
-import gymnasium as gym
 from gymnasium.envs.registration import register
 from GymEnvs.retro_env_wrapper import ReplayMarioEnv
-
+from scipy.stats import entropy
+from scipy.spatial.distance import directed_hausdorff
+import itertools
+from joblib import Parallel, delayed
 
 register(
     id='MarioEnv-v0',
@@ -32,10 +33,10 @@ DISTANCE_THRESHOLD = MAX_X/2
 COLOUR_SCHEME = px.colors.qualitative.Plotly
 
 FORCE_RELOAD = False
-GENERATE_DATASETS = False
-PLOTS = True
+GENERATE_DATASETS = True
+PLOTS = False
 PLOT_HEATMAPS = True
-MAKE_TABLE = True
+MAKE_TABLE = False
 
 def process_observation(obs):
     # Convert the frame to grayscale
@@ -48,14 +49,87 @@ def process_observation(obs):
     # obs = np.transpose(obs, (0, 3, 1, 2))
     return obs
 
+def generate_offline_rl_dataset(dir, filename, level, all_states, all_actions, all_next_states, all_dist_rewards, all_score_rewards):
+
+    stacked_dones = np.zeros(len(all_states[0]), dtype=bool)
+    stacked_dones[-1] = True
+    stacked_states = np.array(all_states[0])
+
+    for state_set in all_states[1:]:
+        done_set = np.zeros(len(state_set), dtype=bool)
+        done_set[-1] = True
+        stacked_dones = np.concatenate((stacked_dones, done_set))
+
+        state_set = np.array(state_set)
+        stacked_states = np.concatenate((stacked_states, state_set))
+
+    print(stacked_dones.shape)
+    print(stacked_states.shape)
+
+    stacked_next_states = np.array(all_next_states[0])
+
+    for state_set in all_next_states[1:]:
+        state_set = np.array(state_set)
+        stacked_next_states = np.concatenate((stacked_next_states, state_set))
+
+    print(stacked_next_states.shape)
+
+    stacked_actions = np.array(all_actions[0])
+    print(stacked_actions.shape)
+
+    for action_set in all_actions[1:]:
+        action_set = np.array(action_set)
+        stacked_actions = np.concatenate((stacked_actions, action_set))
+
+    stacked_dist_rewards = np.array(all_dist_rewards[0])
+    print(stacked_dist_rewards.shape)
+
+    for reward_set in all_dist_rewards[1:]:
+        reward_set = np.array(reward_set)
+        stacked_dist_rewards = np.concatenate((stacked_dist_rewards, reward_set))
+
+    stacked_score_rewards = np.array(all_score_rewards[0])
+    print(stacked_score_rewards.shape)
+
+    for reward_set in all_score_rewards[1:]:
+        reward_set = np.array(reward_set)
+        stacked_score_rewards = np.concatenate((stacked_score_rewards, reward_set))
+
+    # ((score_reward/MAX_SCORE)/2 + (dist_reward/MAX_DISTANCE)/2)*MAX_DISTANCE 
+    stacked_combined_rewards = np.divide(stacked_score_rewards, (2*MAX_SCORE)) + np.divide(stacked_dist_rewards, (2*MAX_DISTANCE))
+    stacked_combined_rewards = np.multiply(stacked_combined_rewards, MAX_DISTANCE)
+
+    # distance dataset
+    # ((obs, action, reward, next_obs, done))
+    combined = zip(stacked_states, stacked_actions, stacked_dist_rewards, stacked_next_states, stacked_dones)
+
+    filepath = f"{dir}{level}_{filename}_offline_dist"
+    with open(f"{filepath}.pkl", "wb") as file:
+        pickle.dump(combined, file)
+        print(f"Dataset saved to: {filepath}.pkl")
+    
+    # score dataset
+    combined = zip(stacked_states, stacked_actions, stacked_score_rewards, stacked_next_states, stacked_dones)
+
+    filepath = f"{dir}{level}_{filename}_offline_score"
+    with open(f"{filepath}.pkl", "wb") as file:
+        pickle.dump(combined, file)
+        print(f"Dataset saved to: {filepath}.pkl")
+
+    # combined dataset
+    combined = zip(stacked_states, stacked_actions, stacked_combined_rewards, stacked_next_states, stacked_dones)
+
+    filepath = f"{dir}{level}_{filename}_offline_combined"
+    with open(f"{filepath}.pkl", "wb") as file:
+        pickle.dump(combined, file)
+        print(f"Dataset saved to: {filepath}.pkl")
+
+    return 
+
 def generate_dataset_from_state_actions(dir, filename, level, all_states, all_actions):
 
     # combine the states and actions together?
-
     stacked_states = np.array(all_states[0])
-
-    # stacked_states = stacked_states.reshape(stacked_states.shape[3], stacked_states.shape[0], stacked_states.shape[1], stacked_states.shape[2])
-
     print(stacked_states.shape)
 
     for state_set in all_states[1:]:
@@ -208,6 +282,9 @@ def extract_info_from_bk2s(bk2_file, level):
     action_distribution = np.zeros(13)
     actions = []
     states = []
+    next_states = []
+    dist_rewards = []
+    score_rewards = []
     # reward = 0
     total_dist_reward = 0
     total_score_reward = 0
@@ -263,28 +340,8 @@ def extract_info_from_bk2s(bk2_file, level):
 
             y = ((info["y_frame"]*256) + info["y_position_in_frame"])
 
-            # if info["level"] != level:
-            #     level = info["level"]
-            #     print(env.statename, info["level"])
-
             if info["lives"] < 2 or info["level"] != level:
                 break
-            # if done or info["player_state"] == 11 or info["level"] != level or y > MAX_Y:# < -432:# or info["viewport_position"] > 1: #y < -432:# or info["player_dead"] != 32:# or y < -432:
-            #     print(env.statename, info["level"])
-            #     print(info["lives"])
-            #     break
-
-            # if done:
-            #     break
-
-            if x != 0 and y != 0:
-                # y = 1024 - y
-                action = map_from_retro_action(keys)
-                trajectories.append([x, y])
-                processed_obs = process_observation(prev_state)
-                states.append(processed_obs)
-                actions.append(action)
-                action_distribution[int(action)] += 1
 
             if state_change:
                 dist_reward = 0
@@ -293,9 +350,17 @@ def extract_info_from_bk2s(bk2_file, level):
             else:
                 dist_reward = (x - prev_position)
                 score_reward = ((int(info['score'])*10) - prev_score)
-            # score_reward = ((info['score']) - prev_score)
-            # combined_reward = env.combined_reward
-                
+
+            action = map_from_retro_action(keys)
+            trajectories.append([x, y])
+            processed_obs = process_observation(prev_state)
+            states.append(processed_obs)
+            processed_next_obs = process_observation(obs)
+            next_states.append(processed_next_obs)
+            actions.append(action)
+            action_distribution[int(action)] += 1
+            dist_rewards.append(dist_reward)
+            score_rewards.append(score_reward)
 
             total_dist_reward += dist_reward
             total_score_reward += score_reward
@@ -322,16 +387,13 @@ def extract_info_from_bk2s(bk2_file, level):
         y_coords = trajectories[:, 1]
 
         if len(set(x_coords)) == 1 or len(set(actions)) == 1:
-            return None, None, None, None, None, None, None, None, None, None
+            return None, None, None, None, None, None, None, None, None, None, None, None, None
 
         death_type = death_log["type"] if "type" in death_log else None
 
-        # if death_type is None:
-        #     print(trajectories)
-
-        return trajectories, states, actions, total_dist_reward, total_score_reward, total_combined_reward, action_distribution, max_score, death_type, death_log
+        return trajectories, states, actions, next_states, dist_rewards, score_rewards, total_dist_reward, total_score_reward, total_combined_reward, action_distribution, max_score, death_type, death_log
     
-    return None, None, None, None, None, None, None, None, None, None
+    return None, None, None, None, None, None, None, None, None, None, None, None, None
 
 def map_from_retro_action(binary_action):
     # this function maps from the retro env action space (binary_action) back to the discrete action space
@@ -383,6 +445,9 @@ def load_in_demo_data(demo_dir, level):
     all_trajectories = []
     all_actions = []
     all_states = []
+    all_next_states = []
+    all_individual_dist_rewards = []
+    all_individual_score_rewards = []
     all_dist_rewards = []
     all_score_rewards = []
     all_combined_rewards = []
@@ -395,12 +460,15 @@ def load_in_demo_data(demo_dir, level):
     for filename in full_file_list:
         if filename.endswith(".bk2"):
             full_filename = f"{demo_dir_level}/{filename}"
-            trajectories, states, actions, total_dist_reward, total_score_reward, total_combined_reward, action_distribution, max_score, death_type, death_log = extract_info_from_bk2s(full_filename, level)
+            trajectories, states, actions, next_states, dist_rewards, score_rewards, total_dist_reward, total_score_reward, total_combined_reward, action_distribution, max_score, death_type, death_log = extract_info_from_bk2s(full_filename, level)
 
             if trajectories is not None:
                 all_trajectories.append(trajectories)
                 all_actions.append(actions)
                 all_states.append(states)
+                all_next_states.append(next_states)
+                all_individual_dist_rewards.append(dist_rewards)
+                all_individual_score_rewards.append(score_rewards)
                 all_dist_rewards.append(total_dist_reward)
                 all_score_rewards.append(total_score_reward)
                 all_combined_rewards.append(total_combined_reward)
@@ -411,7 +479,7 @@ def load_in_demo_data(demo_dir, level):
                 all_death_logs.append(death_log)
                 # combined_action_distribution += action_distribution
 
-    return all_trajectories, all_states, all_actions, all_dist_rewards, all_score_rewards, all_combined_rewards, all_action_distributions, all_max_scores, all_death_types, all_death_logs#, combined_action_distribution
+    return all_trajectories, all_states, all_actions, all_next_states, all_individual_dist_rewards, all_individual_score_rewards, all_dist_rewards, all_score_rewards, all_combined_rewards, all_action_distributions, all_max_scores, all_death_types, all_death_logs#, combined_action_distribution
 
 def load_in_agent_data(agent_dir, level, check_for=""):
     full_file_list = filter(
@@ -526,7 +594,6 @@ def compute_statistics(df):
 
     for key in df.columns:  # Iterate over "amalgam demo data", "nonexpert demo data", etc.
         print(f"Processing: {key}")
-
         # Extract rewards (handle both list & dict cases)
         results[key] = {}
 
@@ -556,7 +623,6 @@ def compute_statistics(df):
             combined_action_dist = np.sum(np.array(action_dist_data), axis=0)
         else:
             raise TypeError(f"Unexpected type {type(action_dist_data)} for action distributions in {key}")
-
 
         results[key]["combined_action_distribution"] = combined_action_dist
 
@@ -646,7 +712,6 @@ def plot_patterns(names_list):
             colours.append(COLOUR_SCHEME[3])
 
     return colours, pattern_shape_sequence, marker_shapes
-
 
 def mean_plots(df, level, with_errors=True, plot_dir=""):
     all_rewards_types = []
@@ -821,10 +886,107 @@ def plot_action_distributions(df, level, plot_dir=""):
 
     plotly_save_with_dir_check(fig, plot_dir, plot_path)
 
-def get_mario_heatmap(trajectories, mario=True):
+# heatmap metrics
+def heatmap_entropy(heatmap):
+    flat = heatmap.flatten()
+    p = flat / (np.sum(flat) + 1e-8)  # Normalize to probability
+    return entropy(p, base=2)
 
-    # from level image
-    x_grid_max = MAX_X + MARIO_X #4000
+def heatmap_variance(heatmap):
+    return np.var(heatmap)
+
+def heatmap_std(heatmap):
+    return np.std(heatmap)
+
+def top_k_concentration(heatmap, k=0.1):
+    flat = heatmap.flatten()
+    sorted_vals = np.sort(flat)[::-1]
+    top_k = int(len(flat) * k)
+    return np.sum(sorted_vals[:top_k]) / (np.sum(flat) + 1e-8)
+
+def normalise_trajectory(traj, x_max, y_max):
+    return [(x / x_max, y / y_max) for x, y in traj]
+
+# Hausdorff: symmetric version
+def hausdorff_distance(path1, path2):
+    d1 = directed_hausdorff(path1, path2)[0]
+    d2 = directed_hausdorff(path2, path1)[0]
+    return max(d1, d2)
+
+def remove_consecutive_duplicates(traj):
+    if not traj:
+        return []
+    cleaned = [traj[0]]
+    for pt in traj[1:]:
+        if pt != cleaned[-1]:
+            cleaned.append(pt)
+    return cleaned
+
+def euclidean(p1, p2):
+    return np.linalg.norm(np.array(p1) - np.array(p2))
+
+def discrete_frechet(P, Q):
+    """
+    Iterative version of discrete Fréchet distance between two paths P and Q.
+    Each path is a list of 2D points: [(x, y), ...]
+    """
+    P = remove_consecutive_duplicates(P)
+    Q = remove_consecutive_duplicates(Q)
+    n, m = len(P), len(Q)
+    ca = np.full((n, m), np.inf)
+
+    ca[0, 0] = euclidean(P[0], Q[0])
+
+    # First row
+    for j in range(1, m):
+        ca[0, j] = max(ca[0, j - 1], euclidean(P[0], Q[j]))
+
+    # First column
+    for i in range(1, n):
+        ca[i, 0] = max(ca[i - 1, 0], euclidean(P[i], Q[0]))
+
+    # Fill rest
+    for i in range(1, n):
+        for j in range(1, m):
+            dist = euclidean(P[i], Q[j])
+            min_prev = min(ca[i - 1, j], ca[i - 1, j - 1], ca[i, j - 1])
+            ca[i, j] = max(min_prev, dist)
+
+    return ca[n - 1, m - 1]
+
+def pairwise_path_metrics(trajectories):
+    # hausdorff_vals = []
+    # # frechet_vals = []
+    frechet_vals = Parallel(n_jobs=-1)(delayed(discrete_frechet)(p1, p2) for p1, p2 in itertools.combinations(trajectories, 2))
+    hausdorff_vals = Parallel(n_jobs=-1)(delayed(hausdorff_distance)(p1, p2) for p1, p2 in itertools.combinations(trajectories, 2))
+
+    return {
+        "mean_hausdorff": np.mean(hausdorff_vals),
+        "max_hausdorff": np.max(hausdorff_vals),
+        "min_hausdorff": np.min(hausdorff_vals),
+        "std_hausdorff": np.std(hausdorff_vals),
+        "mean_frechet": np.mean(frechet_vals),
+        "max_frechet": np.max(frechet_vals),
+        "min_frechet": np.min(frechet_vals),
+        "std_frechet": np.std(frechet_vals),
+    }
+
+# end heatmap metrics
+def get_mario_heatmap(trajectories, mario=True, level=None):
+
+    if level is not None:
+        num_screens = {"Level1-1": 14,
+                        "Level2-1": 14,
+                        "Level3-1": 14,
+                        "Level4-1": 16,
+                        "Level5-1": 14,
+                        "Level6-1": 12.5,
+                        "Level7-1": 13,
+                        "Level8-1": 25}
+        x_grid_max = int(256*num_screens[level]) + MARIO_X
+    else:
+        x_grid_max = MAX_X + MARIO_X #4000
+
     y_grid_max = MAX_Y + MARIO_Y #800
 
     heatmap = np.zeros(((y_grid_max + 1), (x_grid_max + 1)))
@@ -854,7 +1016,27 @@ def get_mario_heatmap(trajectories, mario=True):
 
     heatmap = heatmap[::-1, :]
 
-    return heatmap, x_grid_max, y_grid_max
+    # Compute metrics
+    metrics = {
+        "entropy": heatmap_entropy(heatmap),
+        "variance": heatmap_variance(heatmap),
+        "std_dev": heatmap_std(heatmap),
+        "top_10pct_concentration": top_k_concentration(heatmap, k=0.1),
+        "top_1pct_concentration": top_k_concentration(heatmap, k=0.01),
+        "top_5pct_concentration": top_k_concentration(heatmap, k=0.05),
+        "top_0.5pct_concentration": top_k_concentration(heatmap, k=0.005),
+        "top_0.1pct_concentration": top_k_concentration(heatmap, k=0.001),
+        "top_0.05pct_concentration": top_k_concentration(heatmap, k=0.0005),
+        "top_0.01pct_concentration": top_k_concentration(heatmap, k=0.0001),
+    }
+
+    normalised_trajectories = [normalise_trajectory(traj, x_grid_max, y_grid_max) for traj in trajectories]
+
+    path_metrics = pairwise_path_metrics(normalised_trajectories)
+
+    metrics.update(path_metrics)
+
+    return heatmap, x_grid_max, y_grid_max, metrics
 
 def colorbar(n):
     return dict(
@@ -866,7 +1048,7 @@ def colorbar(n):
 
 def plot_mario_heatmap(trajectories, plot_path, level, info="", mario=True, max_value=None, colour_scale="Hot", x_axis_max=MAX_X, y_axis_max=MAX_Y):
     
-    heatmap, x_grid_max, y_grid_max = get_mario_heatmap(trajectories, mario)
+    heatmap, x_grid_max, y_grid_max, metrics = get_mario_heatmap(trajectories, mario, level)
     
     n = int(np.round(np.log10(np.max(heatmap))))
 
@@ -900,6 +1082,7 @@ def plot_mario_heatmap(trajectories, plot_path, level, info="", mario=True, max_
 
     plot_filename = f"{level}{filepath_info}_heatmap"
     plotly_save_with_dir_check(fig, plot_path, plot_filename)
+    np.save(f"{plot_path}{plot_filename}", heatmap)
 
     fig = go.Figure(data=go.Heatmap(
         z=log_heatmap,#[:, int(x_threshold)],
@@ -919,8 +1102,9 @@ def plot_mario_heatmap(trajectories, plot_path, level, info="", mario=True, max_
 
     plot_filename = f"{level}{filepath_info}_log_heatmap"
     plotly_save_with_dir_check(fig, plot_path, plot_filename)
+    np.save(f"{plot_path}{plot_filename}", log_heatmap)
 
-    return max_value
+    return max_value, metrics
 
 
 def plotly_save_with_dir_check(fig, plot_path, plot_filename):
@@ -990,11 +1174,97 @@ def plot_level_scatters(statistic_dict, plot_dir, agent_types, plot_error_bars=F
         filename = f"{reward_type}_per_level_scatter"
         plotly_save_with_dir_check(fig, plot_dir, filename)
 
+def plot_radar_heatmap_metrics(df, plot_dir, level):
+
+    # Set up radar chart
+    fig = go.Figure()
+
+    for agent in df.index:        
+        fig.add_trace(go.Scatterpolar(
+            r=df.loc[agent].values,
+            theta=df.columns,
+            fill='toself',
+            name=agent
+        ))
+
+    fig.update_layout(
+        polar=dict(
+            radialaxis=dict(visible=True, range=[0, 1])
+        ),
+        showlegend=True,
+        title="Agent Behavior Comparison (Radar Plot)"
+    )
+
+    filename = f"{level}_heatmap_metrics_radar_plot"
+    plotly_save_with_dir_check(fig, plot_dir, filename)
+    # fig.show()
+
+def plot_bar_heatmap_metrics(df, plot_dir, level):
+
+    df_melted = df.melt(id_vars=["agent"], var_name="metric", value_name="value")
+
+    fig = px.bar(
+        df_melted,
+        x="agent",
+        y="value",
+        color="metric",
+        barmode="group",
+        title="Agent Metrics Comparison"
+    )
+    fig.update_layout(xaxis_tickangle=-45)
+   
+    filename = f"{level}_heatmap_metrics_bar_plot"
+    plotly_save_with_dir_check(fig, plot_dir, filename)
+
+def plot_interactive_heatmap_metrics(df, plot_dir, level):
+    # Create one trace per metric
+    metrics = df.columns[1:]  # skip 'agent'
+    fig = go.Figure()
+
+    for i, metric in enumerate(metrics):
+        visible = [i == j for j in range(len(metrics))]
+        fig.add_trace(go.Bar(
+            x=df["agent"],
+            y=df[metric],
+            name=metric,
+            visible=visible[i]  # only show the first metric initially
+        ))
+
+    # Add dropdown buttons to toggle each metric
+    dropdown_buttons = [
+        dict(label=metric,
+            method="update",
+            args=[{"visible": [i == j for j in range(len(metrics))]},
+                {"title": f"{metric} by Agent"}])
+        for i, metric in enumerate(metrics)
+    ]
+
+    fig.update_layout(
+        updatemenus=[
+            dict(
+                buttons=dropdown_buttons,
+                direction="down",
+                showactive=True,
+                x=1.05,
+                xanchor="left",
+                y=1,
+                yanchor="top"
+            )
+        ],
+        title=f"{metrics[0]} by Agent",
+        xaxis=dict(title="Agent", tickangle=-45),
+        yaxis=dict(title="Value"),
+        showlegend=False
+    )
+
+    filename = f"{level}_heatmap_interactive_metrics_bar_plot"
+    plotly_save_with_dir_check(fig, plot_dir, filename)
+
+
 def main():
 
     demo_bk2_dir = "/Users/mdwyer/Documents/Code/PhD_Mario_Work/mario/user_bk2s"
     demo_dir = "/Users/mdwyer/Documents/Code/PhD_Mario_Work/mario_bc/demo_pickle_files/"
-    # demo_dir = f"/Users/mdwyer/Documents/Code/PhD_Mario_Work/mario_bc/{EXP_ID}/"
     agent_eval_dir = f"/Users/mdwyer/Documents/Code/PhD_Mario_Work/mario_bc/training_logs/experiments/{EXP_ID}/saved_models/level_change_random"
     agent_dir = f"/Users/mdwyer/Documents/Code/PhD_Mario_Work/mario_bc/{EXP_ID}/"
     plot_dir = f"{agent_dir}plots/"
@@ -1036,7 +1306,7 @@ def main():
         nonexpert_demo_filename = f"{demo_dir}{level}_nonexpert_demo_dataframe.pkl"
 
         # set up a FORCE_RELOAD bool 
-        if not FORCE_RELOAD and (os.path.isfile(amalgam_demo_filename) and os.path.isfile(expert_demo_filename) and os.path.isfile(nonexpert_demo_filename)):
+        if not FORCE_RELOAD and not GENERATE_DATASETS and (os.path.isfile(amalgam_demo_filename) and os.path.isfile(expert_demo_filename) and os.path.isfile(nonexpert_demo_filename)):
             df = pd.read_pickle(amalgam_demo_filename)
             results[level]["amalgam demo data"] = df.to_dict()
 
@@ -1047,7 +1317,7 @@ def main():
             results[level]["nonexpert demo data"] = df.to_dict()
         else:
             data_generated = True
-            all_trajectories, all_states, all_actions, all_dist_rewards, all_score_rewards, all_combined_rewards, all_action_distributions, all_max_scores, all_death_types, all_death_logs = load_in_demo_data(demo_bk2_dir, level)
+            all_trajectories, all_states, all_actions, all_next_states, all_individual_dist_rewards, all_individual_score_rewards, all_dist_rewards, all_score_rewards, all_combined_rewards, all_action_distributions, all_max_scores, all_death_types, all_death_logs = load_in_demo_data(demo_bk2_dir, level)
             results[level]["amalgam demo data"] = {"trajectories": copy.deepcopy(all_trajectories), 
                                             "actions": copy.deepcopy(all_actions),
                                             "dist_rewards": all_dist_rewards,
@@ -1069,18 +1339,31 @@ def main():
 
             if GENERATE_DATASETS:
                 generate_dataset_from_state_actions(dataset_dir, "amalgam", level, all_states, all_actions)
+                generate_offline_rl_dataset(dataset_dir, "amalgam", level, all_states, all_actions, all_next_states, all_individual_dist_rewards, all_individual_score_rewards)
 
             data_generated = True
             expert_indices = []
             expert_states = []
             nonexpert_states = []
+            expert_next_states = []
+            nonexpert_next_states = []
+            expert_individual_dist_rewards = []
+            nonexpert_individual_dist_rewards = []
+            expert_individual_score_rewards = []
+            nonexpert_individual_score_rewards = []
 
             for i, trajectory in enumerate(all_trajectories):
                 if distance_expert(trajectory):
                     expert_indices.append(i)
                     expert_states.append(all_states[i])
+                    expert_individual_dist_rewards.append(all_individual_dist_rewards[i])
+                    expert_individual_score_rewards.append(all_individual_score_rewards[i])
+                    expert_next_states.append(all_next_states[i])
                 else:
                     nonexpert_states.append(all_states[i])
+                    nonexpert_individual_dist_rewards.append(all_individual_dist_rewards[i])
+                    nonexpert_individual_score_rewards.append(all_individual_score_rewards[i])
+                    nonexpert_next_states.append(all_next_states[i])
 
             results[level]["expert demo data"] = {}
             results[level]["nonexpert demo data"] = {}
@@ -1110,9 +1393,6 @@ def main():
 
             for key in nonexp_death_types:
                 results[level]["nonexpert demo data"][f"{key}_ends"] = nonexp_death_types[key]
-            
-            # print(exp_death_types)
-            # print(nonexp_death_types)
 
             df = pd.DataFrame.from_dict(results[level]["expert demo data"])
             dataframe_saving(df, expert_demo_filename)
@@ -1121,9 +1401,14 @@ def main():
             dataframe_saving(df, nonexpert_demo_filename)
 
             if GENERATE_DATASETS:
-                generate_dataset_from_state_actions(dataset_dir, "expert_distance", level, expert_states, results[level]["expert demo data"]["actions"])
-                generate_dataset_from_state_actions(dataset_dir, "nonexpert_distance", level, nonexpert_states, results[level]["nonexpert demo data"]["actions"])
-
+                expert_actions = results[level]["expert demo data"]["actions"]
+                nonexpert_actions = results[level]["nonexpert demo data"]["actions"]
+                generate_dataset_from_state_actions(dataset_dir, "expert_distance", level, expert_states, expert_actions)
+                generate_dataset_from_state_actions(dataset_dir, "nonexpert_distance", level, nonexpert_states, nonexpert_actions)
+                
+                generate_offline_rl_dataset(dataset_dir, "expert_distance", level, expert_states, expert_actions, expert_next_states, expert_individual_dist_rewards, expert_individual_score_rewards)
+                generate_offline_rl_dataset(dataset_dir, "nonexpert_distance", level, nonexpert_states, nonexpert_actions, nonexpert_next_states, nonexpert_individual_dist_rewards, nonexpert_individual_score_rewards)
+               
         agent_demo_filename = f"{agent_dir}{level}_agent_dataframe.pkl"
 
         if not FORCE_RELOAD and os.path.isfile(agent_demo_filename):
@@ -1232,7 +1517,9 @@ def main():
 
         if PLOT_HEATMAPS:
             column_names = {}
-            
+            heatmap_metrics = {}
+            demo_heatmap_metrics = {}
+
             for name in results[level]:
                 if 'bc' in name:
                     split_name = name[(len('PPO_bc_')):].split('_20M')
@@ -1250,6 +1537,13 @@ def main():
                     split_name = name[(len('PPO_')):].split('_20M')
                     column_names[name] = name[:3] + "_" + split_name[0]
 
+            demo_loaded = False
+            # load in demo metrics
+            file_name = f'{demo_dir}{level}_heatmap_metrics_df.pkl'
+            if not FORCE_RELOAD and os.path.isfile(file_name):
+                demo_heatmap_metrics = pd.read_pickle(file_name)
+                demo_loaded = True
+
             for agent_type in results[level]:
                 agent_trajectories = results[level][agent_type]["trajectories"]
                 # print(agent_trajectories)
@@ -1258,11 +1552,32 @@ def main():
                 # elif isinstance(agent_trajectories, list):  # If already a list, convert to NumPy array
                 #     agent_trajectories = np.array(agent_trajectories)
 
-                if "demo" in agent_type.lower() or "bc_only" in agent_type.lower():
+                if not demo_loaded and "demo" in agent_type.lower():
+                    _, metrics = plot_mario_heatmap(agent_trajectories, demo_dir, level, f"{column_names[agent_type]}")
+                    demo_heatmap_metrics[agent_type] = metrics
+                elif "bc_only" in agent_type.lower():
                     continue
-                    plot_mario_heatmap(agent_trajectories, demo_dir, level, f"{column_names[agent_type]}")
                 else:
-                    plot_mario_heatmap(agent_trajectories, plot_dir, level, f"{column_names[agent_type]}")
+                    _, metrics = plot_mario_heatmap(agent_trajectories, plot_dir, level, f"{column_names[agent_type]}")
+                    heatmap_metrics[agent_type] = metrics
+            
+            if type(demo_heatmap_metrics) is dict:
+                demo_heatmap_metrics = pd.DataFrame.from_dict(demo_heatmap_metrics, orient='index')
+
+            heatmap_df = pd.DataFrame.from_dict(heatmap_metrics, orient='index')
+            heatmap_df = pd.concat([heatmap_df, demo_heatmap_metrics])
+
+            file_name = f'{agent_dir}{level}_heatmap_metrics_df.pkl'
+            dataframe_saving(heatmap_df, file_name)
+
+            if not demo_loaded:
+                file_name = f'{demo_dir}{level}_heatmap_metrics_df.pkl'
+                dataframe_saving(demo_heatmap_metrics, file_name)
+            
+            plot_interactive_heatmap_metrics(heatmap_df, plot_dir, level)
+            plot_bar_heatmap_metrics(heatmap_df, plot_dir, level)
+            plot_radar_heatmap_metrics(heatmap_df, plot_dir, level)
+
 
     if PLOTS:
         agent_types = []

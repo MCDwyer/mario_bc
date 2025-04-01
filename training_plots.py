@@ -83,7 +83,8 @@ ACTION_DISTRIBUTION_TAGS = {
 # rollout/ep_rew_mean
 
 # SHARED_DIR = "experiments/combined_tuned_params/training_logs/level_change_random/"
-SHARED_DIR = "/Users/mdwyer/Documents/Code/PhD_Mario_Work/mario_bc/training_logs/experiments/tuned_exp_test_params/training_logs/level_change_random/"
+FILE_NAME = "1000_tuned_exp_params"
+SHARED_DIR = f"/Users/mdwyer/Documents/Code/PhD_Mario_Work/mario_bc/training_logs/experiments/{FILE_NAME}/training_logs/level_change_random/"
 
 SUP_LOG_DIR = f"{SHARED_DIR}supervised/amalgam/PPO_20M_agent_"
 
@@ -93,7 +94,7 @@ SUP_LOG_DIR = f"{SHARED_DIR}supervised/amalgam/PPO_20M_agent_"
 UNSUP_LOG_DIR = f"{SHARED_DIR}unsupervised/PPO_20M_agent_"
 # UNSUP_BC_LOG_DIR = "level_change_random/unsupervised_bc_tuning/unsupervised_PPO_10000k_"
 AGENT_START_INDEX = 0
-NUM_AGENTS = 10
+NUM_AGENTS = 5
 TRAINING = True
 # AGENT_INFO = "comparison_of_all_PPO_20M_"
 # AGENT_INFO = "sup_exp_nonexp_5000k_"
