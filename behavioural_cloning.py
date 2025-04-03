@@ -73,7 +73,8 @@ def pretrain_actor_critic_with_offline_rl(model, observations, actions, rewards,
     if compare_params(model.policy.state_dict(), policy.state_dict()):
         print("Custom policy initialised")
 
-    policy.offline_actor_critic_training(observations, actions, rewards, next_obs, dones, batch_size, num_epochs, device)
+    policy.bc_with_value_training(observations, actions, rewards, next_obs, dones, num_epochs, batch_size, device, lr=1e-4)
+    # policy.offline_actor_critic_training(observations, actions, rewards, next_obs, dones, lr, batch_size, num_epochs, device)
 
     policy_params_before = copy.deepcopy(model.policy.state_dict())
 
@@ -204,17 +205,27 @@ def load_data(training_data_name, levels, n_stack=1, offline_rl=False):
 
         print(f"Loading {level} demo data from {full_filepath}.")
 
-        observations = np.array(observations)
-        print(observations.shape)
+        # observations = np.array(observations)
+        # print(observations.shape)
 
         if all_actions is None:
             all_actions = np.array(actions)
             observations = np.array(observations)
-            observations = observations.reshape(observations.shape[0], observations.shape[3], observations.shape[1], observations.shape[2])
+            if len(observations.shape) == 4:
+                observations = observations.reshape(observations.shape[0], observations.shape[3], observations.shape[1], observations.shape[2])
+            else:
+                observations = observations.reshape(observations.shape[0], 1, observations.shape[1], observations.shape[2])
+
             all_observations = observations
 
             if offline_rl:
                 next_observations = np.array(next_observations)
+
+                if len(next_observations.shape) == 4:
+                    next_observations = next_observations.reshape(next_observations.shape[0], next_observations.shape[3], next_observations.shape[1], next_observations.shape[2])
+                else:
+                    next_observations = next_observations.reshape(next_observations.shape[0], 1, next_observations.shape[1], next_observations.shape[2])
+                
                 next_observations = next_observations.reshape(next_observations.shape[0], next_observations.shape[3], next_observations.shape[1], next_observations.shape[2])
                 all_next_obs = next_observations
                 all_rewards = np.array(rewards)
@@ -223,12 +234,22 @@ def load_data(training_data_name, levels, n_stack=1, offline_rl=False):
         else:
             all_actions = np.concatenate((all_actions, np.array(actions)))
             observations = np.array(observations)
-            observations = observations.reshape(observations.shape[0], observations.shape[3], observations.shape[1], observations.shape[2])
+            
+            if len(observations.shape) == 4:
+                observations = observations.reshape(observations.shape[0], observations.shape[3], observations.shape[1], observations.shape[2])
+            else:
+                observations = observations.reshape(observations.shape[0], 1, observations.shape[1], observations.shape[2])
+            
             all_observations = np.concatenate((all_observations, observations))
 
             if offline_rl:
                 next_observations = np.array(next_observations)
-                next_observations = next_observations.reshape(next_observations.shape[0], next_observations.shape[3], next_observations.shape[1], next_observations.shape[2])
+
+                if len(next_observations.shape) == 4:
+                    next_observations = next_observations.reshape(next_observations.shape[0], next_observations.shape[3], next_observations.shape[1], next_observations.shape[2])
+                else:
+                    next_observations = next_observations.reshape(next_observations.shape[0], 1, next_observations.shape[1], next_observations.shape[2])
+                
                 all_next_obs = np.concatenate((all_next_obs, next_observations))
                 all_rewards = np.concatenate((all_rewards, np.array(rewards)))
                 all_dones = np.concatenate((all_dones, np.array(dones)))
@@ -240,8 +261,6 @@ def load_data(training_data_name, levels, n_stack=1, offline_rl=False):
 
 
 def behavioural_cloning(model_name, model, levels, training_data_name, model_path, lr=5e-3, num_epochs=10, batch_size=128, n_stack=1):
-
-    # actions, observations, next_observations, rewards = load_data(filepath, n_stack)
 
     offline_rl = True if "offline" in training_data_name else False
 
@@ -269,8 +288,9 @@ def behavioural_cloning(model_name, model, levels, training_data_name, model_pat
     print(model.policy)
     print()
 
-    # print(f"\tNext observations: {next_observations.shape}")
-    # print(f"\tRewards: {rewards.shape}")
+    if offline_rl:
+        print(f"\tNext observations: {next_obs.shape}")
+        print(f"\tRewards: {rewards.shape}")
 
     if model_name == "PPO":
         if offline_rl:
@@ -338,37 +358,3 @@ def behavioural_cloning(model_name, model, levels, training_data_name, model_pat
 #     #     nonexpert_act = new_act*proportion # set all other actions to be equally likely
 
 #     return nonexpert_act, nonexpert_obs, 0
-
-
-# def main():
-#     # load in the two trajectories datasets
-
-#     results = []
-
-#     nonexpert_acts, nonexpert_obs = load_data("/Users/mdwyer/Documents/Code/PhD_Mario_Work/mario_bc/user_data_processed_for_bc/nonexpert_distance_bc_data.obj")
-#     expert_acts, expert_obs = load_data("/Users/mdwyer/Documents/Code/PhD_Mario_Work/mario_bc/user_data_processed_for_bc/expert_distance_bc_data.obj")
-
-#     expert_acts = expert_acts[:10000]
-#     expert_obs = expert_obs[:10000]
-
-#     for i, obs in enumerate(nonexpert_obs[:10000]):
-#         # print(obs.shape)
-#         pair = (nonexpert_acts[i], obs)
-#         _, _, indicator = idk(pair, expert_acts, expert_obs)
-
-#         results.append(indicator)
-
-#     # Create an empty dictionary to store counts
-#     counts = {}
-
-#     # Iterate through the list and count occurrences
-#     for number in results:
-#         if number in counts:
-#             counts[number] += 1
-#         else:
-#             counts[number] = 1
-
-#     print(counts)
-
-# # if __name__=="__main__":
-#     # main()

@@ -33,10 +33,11 @@ DISTANCE_THRESHOLD = MAX_X/2
 COLOUR_SCHEME = px.colors.qualitative.Plotly
 
 FORCE_RELOAD = False
-GENERATE_DATASETS = True
-PLOTS = False
+GENERATE_DATASETS = False
+PLOTS = True
 PLOT_HEATMAPS = True
 MAKE_TABLE = False
+FORCE_RELOAD_AGENTS = True
 
 def process_observation(obs):
     # Convert the frame to grayscale
@@ -727,9 +728,9 @@ def mean_plots(df, level, with_errors=True, plot_dir=""):
                 other_figs.append(clean_row_name)
 
     _mean_plots(df, level, with_errors, plot_dir, TRAINING_REWARD, "Reward", all_rewards_types)
-    _mean_plots(df, level, with_errors, plot_dir, TRAINING_REWARD, "Other Metrics", other_figs)
+    _mean_plots(df, level, with_errors, plot_dir, TRAINING_REWARD, "Other Metrics", other_figs, individual_figs=False)
 
-def _mean_plots(df, level, with_errors, plot_dir, training_reward, name, row_list):
+def _mean_plots(df, level, with_errors, plot_dir, training_reward, name, row_list, individual_figs=True):
 
     sig_figs = 3
     # all_rewards_types = []
@@ -833,8 +834,9 @@ def _mean_plots(df, level, with_errors, plot_dir, training_reward, name, row_lis
 
             plot_path = f"{level}_mean_{name}_{reward_type}"
 
-        fig.update_layout(showlegend=False)#, textposition="outside", cliponaxis=False)
-        plotly_save_with_dir_check(fig, plot_dir, plot_path)
+        if individual_figs:
+            fig.update_layout(showlegend=False)#, textposition="outside", cliponaxis=False)
+            plotly_save_with_dir_check(fig, plot_dir, plot_path)
 
     plot_path = f"{level}_mean_{name}"
     plot_path += "_with_errors" if with_errors else ""
@@ -914,12 +916,27 @@ def hausdorff_distance(path1, path2):
     return max(d1, d2)
 
 def remove_consecutive_duplicates(traj):
+    not_list = False
+
+    if type(traj) is np.ndarray:
+        not_list = True
+        traj = list(traj)
+
     if not traj:
         return []
     cleaned = [traj[0]]
+
     for pt in traj[1:]:
-        if pt != cleaned[-1]:
-            cleaned.append(pt)
+        if not_list:
+            if not np.equal(pt, cleaned[-1]).all():
+                cleaned.append(pt)
+        else:
+            if pt != cleaned[-1]:
+                cleaned.append(pt)
+
+    if not_list:
+        cleaned = np.array(cleaned)
+
     return cleaned
 
 def euclidean(p1, p2):
@@ -932,6 +949,7 @@ def discrete_frechet(P, Q):
     """
     P = remove_consecutive_duplicates(P)
     Q = remove_consecutive_duplicates(Q)
+
     n, m = len(P), len(Q)
     ca = np.full((n, m), np.inf)
 
@@ -954,11 +972,20 @@ def discrete_frechet(P, Q):
 
     return ca[n - 1, m - 1]
 
+def downsample(traj, step=5):
+    return traj[::step] if len(traj) > step else traj
+
 def pairwise_path_metrics(trajectories):
     # hausdorff_vals = []
     # # frechet_vals = []
-    frechet_vals = Parallel(n_jobs=-1)(delayed(discrete_frechet)(p1, p2) for p1, p2 in itertools.combinations(trajectories, 2))
-    hausdorff_vals = Parallel(n_jobs=-1)(delayed(hausdorff_distance)(p1, p2) for p1, p2 in itertools.combinations(trajectories, 2))
+
+    pairs = list(itertools.combinations(trajectories, 2))
+    hausdorff_vals = Parallel(n_jobs=-1)(delayed(hausdorff_distance)(p1, p2) for p1, p2 in pairs)
+
+    trajectories = [downsample(t, step=10) for t in trajectories]
+    pairs = list(itertools.combinations(trajectories, 2))
+
+    frechet_vals = Parallel(n_jobs=-1)(delayed(discrete_frechet)(p1, p2) for p1, p2 in pairs)
 
     return {
         "mean_hausdorff": np.mean(hausdorff_vals),
@@ -971,6 +998,27 @@ def pairwise_path_metrics(trajectories):
         "std_frechet": np.std(frechet_vals),
     }
 
+def get_top_k_curve(heatmap, k_values=None):
+    if k_values is None:
+        k_values = np.linspace(0.00, 1, 1000)  # 1% to 100%
+
+    flat = heatmap.flatten()
+    sorted_vals = np.sort(flat)[::-1]
+    total = np.sum(sorted_vals)
+
+    if total == 0:
+        return k_values, np.zeros_like(k_values)
+
+    cumulative = np.cumsum(sorted_vals)
+    curve = []
+
+    for k in k_values:
+        idx = int(len(sorted_vals) * k)
+        idx = max(1, idx)
+        curve.append(cumulative[idx - 1] / total)
+
+    return k_values, curve
+
 # end heatmap metrics
 def get_mario_heatmap(trajectories, mario=True, level=None):
 
@@ -979,10 +1027,10 @@ def get_mario_heatmap(trajectories, mario=True, level=None):
                         "Level2-1": 14,
                         "Level3-1": 14,
                         "Level4-1": 16,
-                        "Level5-1": 14,
-                        "Level6-1": 12.5,
-                        "Level7-1": 13,
-                        "Level8-1": 25}
+                        "Level5-1": 15,
+                        "Level6-1": 13,
+                        "Level7-1": 15,
+                        "Level8-1": 26}
         x_grid_max = int(256*num_screens[level]) + MARIO_X
     else:
         x_grid_max = MAX_X + MARIO_X #4000
@@ -993,14 +1041,14 @@ def get_mario_heatmap(trajectories, mario=True, level=None):
     print(heatmap.shape)
 
     for trajectory in trajectories:
-
+        trajectory = remove_consecutive_duplicates(trajectory)
         trajectory_heatmap = np.zeros_like(heatmap)
         
         for state in trajectory:
             x, y = state
         
             if not mario:
-                if x < MAX_X and y < MAX_Y:
+                if x < x_grid_max and y < y_grid_max:
                     trajectory_heatmap[int(y), int(x)] += 1
             else:
                 for i in range(MARIO_X):
@@ -1008,7 +1056,7 @@ def get_mario_heatmap(trajectories, mario=True, level=None):
                     for j in range(MARIO_Y):
                         new_y = y + j
                 
-                        if new_x < MAX_X and new_y < MAX_Y:
+                        if new_x < x_grid_max and new_y < y_grid_max:
                             trajectory_heatmap[int(new_y), int(new_x)] += 1
             
         trajectory_heatmap = np.clip(trajectory_heatmap, 0, 1)
@@ -1021,20 +1069,14 @@ def get_mario_heatmap(trajectories, mario=True, level=None):
         "entropy": heatmap_entropy(heatmap),
         "variance": heatmap_variance(heatmap),
         "std_dev": heatmap_std(heatmap),
-        "top_10pct_concentration": top_k_concentration(heatmap, k=0.1),
-        "top_1pct_concentration": top_k_concentration(heatmap, k=0.01),
-        "top_5pct_concentration": top_k_concentration(heatmap, k=0.05),
-        "top_0.5pct_concentration": top_k_concentration(heatmap, k=0.005),
-        "top_0.1pct_concentration": top_k_concentration(heatmap, k=0.001),
-        "top_0.05pct_concentration": top_k_concentration(heatmap, k=0.0005),
-        "top_0.01pct_concentration": top_k_concentration(heatmap, k=0.0001),
+        "top_k_values": get_top_k_curve(heatmap)
     }
 
-    normalised_trajectories = [normalise_trajectory(traj, x_grid_max, y_grid_max) for traj in trajectories]
+    # normalised_trajectories = [normalise_trajectory(traj, x_grid_max, y_grid_max) for traj in trajectories]
 
-    path_metrics = pairwise_path_metrics(normalised_trajectories)
+    # path_metrics = pairwise_path_metrics(normalised_trajectories)
 
-    metrics.update(path_metrics)
+    # metrics.update(path_metrics)
 
     return heatmap, x_grid_max, y_grid_max, metrics
 
@@ -1055,7 +1097,8 @@ def plot_mario_heatmap(trajectories, plot_path, level, info="", mario=True, max_
     log_heatmap = np.log10(heatmap)
     log_heatmap = np.nan_to_num(log_heatmap)
     
-    heatmap = heatmap/np.sum(heatmap)
+    # heatmap = heatmap/np.sum(heatmap)
+    heatmap = heatmap/len(trajectories)
 
     if max_value is None:
         max_value = np.max(heatmap)
@@ -1260,6 +1303,75 @@ def plot_interactive_heatmap_metrics(df, plot_dir, level):
     filename = f"{level}_heatmap_interactive_metrics_bar_plot"
     plotly_save_with_dir_check(fig, plot_dir, filename)
 
+def plot_top_k_curves(curve_dictionary, plot_dir, level, plot_zoomed=False):
+    fig = go.Figure()
+
+    for agent in curve_dictionary:
+        k_vals, concentrations = curve_dictionary[agent]
+        if plot_zoomed:
+            k_vals = k_vals[:int(len(k_vals)/5)] # 20%
+        fig.add_trace(go.Scatter(
+            x=k_vals * 100,  # Convert to percent
+            y=concentrations,
+            mode='lines',
+            name=agent
+        ))
+
+    fig.update_layout(
+        title="Top-K Concentration Curve per Agent",
+        xaxis_title="Top-K % of Most Visited Locations",
+        yaxis_title="Cumulative Movement Concentration",
+        xaxis=dict(tickmode="linear", dtick=10),
+        yaxis=dict(range=[0, 1]),
+        width=800,
+        height=500
+    )
+
+
+    filename = f"{level}_top_k_concentration_curves"
+    filename = filename + "_reduced_range" if plot_zoomed else filename
+    plotly_save_with_dir_check(fig, plot_dir, filename)
+
+    if not plot_zoomed:
+        plot_top_k_curves(curve_dictionary, plot_dir, level, plot_zoomed=True)
+    
+
+def new_column_names(current_names):
+    column_names = {}
+
+    for name in current_names:
+        if 'bc' in name:
+            split_name = name[(len('PPO_bc_')):].split('_20M')
+            if 'only' in name:
+                column_names[name] = name[:3] + "_BC_only_" + split_name[0]
+            else:
+                column_names[name] = name[:3] + "_20M_supervised_" + split_name[0]
+        elif 'demo' in name:
+            split_name = name.split(' ')
+            column_names[name] = "Demo_Data_" + split_name[0]
+        elif 'best' in name:
+            split_name = name[(len('best_')):].split('_20M')
+            column_names[name] = name[:4] + "_" + split_name[0]
+        elif "20M" not in name:
+            # PPO_15M_unsupervised_4
+            # PPO_unsupervised_20M_agent_4
+            # split_name = name.split("_")
+            # if split_name[-1][-1].isdigit():
+            # column_names[name] = name[:-(len(split_name[-1]) + 1)]
+            column_names[name] = name
+        else:
+            split_name = name[(len('PPO_')):].split('_20M')
+            column_names[name] = name[:len('PPO_')] + "20M_" + split_name[0]
+
+    return column_names
+
+def rename_columns(df):
+    
+    column_names = new_column_names(df.columns.tolist())
+
+    df = df.rename(columns=column_names)
+
+    return df
 
 def main():
 
@@ -1411,7 +1523,7 @@ def main():
                
         agent_demo_filename = f"{agent_dir}{level}_agent_dataframe.pkl"
 
-        if not FORCE_RELOAD and os.path.isfile(agent_demo_filename):
+        if not FORCE_RELOAD and not FORCE_RELOAD_AGENTS and os.path.isfile(agent_demo_filename):
             df = pd.read_pickle(agent_demo_filename)
 
             results[level].update(df.to_dict())
@@ -1448,26 +1560,7 @@ def main():
             # statistics[level] = df
             print(df)
 
-            column_names = {}
-
-            for name in df.columns.tolist():
-                if 'bc' in name:
-                    split_name = name[(len('PPO_bc_')):].split('_20M')
-                    if 'only' in name:
-                        column_names[name] = name[:3] + "_BC_only_" + split_name[0]
-                    else:
-                        column_names[name] = name[:3] + "_" + split_name[0]
-                elif 'demo' in name:
-                    split_name = name.split(' ')
-                    column_names[name] = "Demo_Data_" + split_name[0]
-                elif 'best' in name:
-                    split_name = name[(len('best_')):].split('_20M')
-                    column_names[name] = name[:4] + "_" + split_name[0]
-                else:
-                    split_name = name[(len('PPO_')):].split('_20M')
-                    column_names[name] = name[:3] + "_" + split_name[0]
-
-            df = df.rename(columns=column_names)
+            df = rename_columns(df)
 
             df = df.reindex(sorted(df.columns), axis=1)
         
@@ -1520,22 +1613,9 @@ def main():
             heatmap_metrics = {}
             demo_heatmap_metrics = {}
 
-            for name in results[level]:
-                if 'bc' in name:
-                    split_name = name[(len('PPO_bc_')):].split('_20M')
-                    if 'only' in name:
-                        column_names[name] = name[:3] + "_BC_only_" + split_name[0]
-                    else:
-                        column_names[name] = name[:3] + "_" + split_name[0]
-                elif 'demo' in name:
-                    split_name = name.split(' ')
-                    column_names[name] = "Demo_Data_" + split_name[0]
-                elif 'best' in name:
-                    split_name = name[(len('best_')):].split('_20M')
-                    column_names[name] = name[:4] + "_" + split_name[0]
-                else:
-                    split_name = name[(len('PPO_')):].split('_20M')
-                    column_names[name] = name[:3] + "_" + split_name[0]
+            top_k_curve_data = {}
+
+            column_names = new_column_names(list(results[level].keys()))
 
             demo_loaded = False
             # load in demo metrics
@@ -1552,15 +1632,23 @@ def main():
                 # elif isinstance(agent_trajectories, list):  # If already a list, convert to NumPy array
                 #     agent_trajectories = np.array(agent_trajectories)
 
-                if not demo_loaded and "demo" in agent_type.lower():
-                    _, metrics = plot_mario_heatmap(agent_trajectories, demo_dir, level, f"{column_names[agent_type]}")
-                    demo_heatmap_metrics[agent_type] = metrics
+                if "demo" in agent_type.lower():
+                    if not demo_loaded:
+                        _, metrics = plot_mario_heatmap(agent_trajectories, demo_dir, level, f"{column_names[agent_type]}")
+                        demo_heatmap_metrics[agent_type] = metrics
+
+                        # top_k_curve_data[agent_type] = metrics["top_k_values"]
+
+                    # top_k_curve_data[agent_type] = demo_heatmap_metrics.loc[agent_type]["top_k_values"]
                 elif "bc_only" in agent_type.lower():
                     continue
                 else:
                     _, metrics = plot_mario_heatmap(agent_trajectories, plot_dir, level, f"{column_names[agent_type]}")
                     heatmap_metrics[agent_type] = metrics
+                    top_k_curve_data[agent_type] = metrics["top_k_values"]
             
+            plot_top_k_curves(top_k_curve_data, agent_dir, level)
+
             if type(demo_heatmap_metrics) is dict:
                 demo_heatmap_metrics = pd.DataFrame.from_dict(demo_heatmap_metrics, orient='index')
 
@@ -1574,9 +1662,10 @@ def main():
                 file_name = f'{demo_dir}{level}_heatmap_metrics_df.pkl'
                 dataframe_saving(demo_heatmap_metrics, file_name)
             
-            plot_interactive_heatmap_metrics(heatmap_df, plot_dir, level)
-            plot_bar_heatmap_metrics(heatmap_df, plot_dir, level)
-            plot_radar_heatmap_metrics(heatmap_df, plot_dir, level)
+            statistics[level] = pd.concat([statistics[level], heatmap_df])
+            # plot_interactive_heatmap_metrics(heatmap_df, plot_dir, level)
+            # plot_bar_heatmap_metrics(heatmap_df, plot_dir, level)
+            # plot_radar_heatmap_metrics(heatmap_df, plot_dir, level)
 
 
     if PLOTS:
@@ -1596,7 +1685,9 @@ def main():
                 f.write(table_data[table_type])
 
 
-for exp_id in ["25_tuned_exp_params", "100_tuned_exp_params", "1000_tuned_exp_params", "100_score_tuned_params", "100_combined_tuned_params", "25_score_tuned_exp_params", "25_combined_tuned_params"]:
+for exp_id in ["25_tuned_exp_params"]:#, "100_tuned_exp_params", "1000_tuned_exp_params", "100_score_tuned_params", "100_combined_tuned_params", "25_score_tuned_exp_params", "25_combined_tuned_params"]:
+# for exp_id in ["100_tuned_exp_params", "1000_tuned_exp_params", "100_score_tuned_params", "100_combined_tuned_params", "25_score_tuned_exp_params", "25_combined_tuned_params"]:
+
     EXP_ID = exp_id
 
     if "score" in exp_id:
