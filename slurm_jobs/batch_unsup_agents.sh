@@ -1,17 +1,22 @@
 #!/bin/bash
 # bash script to sbatch multiple agents worth of bc_training
 
-if [ "$#" -ne 5 ]; then
-  echo "Usage: batch_unsup_agents.sh <start_index> <number_of_times> <model_type> <bc_data> <exp_id>"
+if [ "$#" -ne 4 ]; then
+  echo "Usage: batch_unsup_agents.sh <start_index> <model_type> <bc_data> <exp_id>"
   exit 1
 fi
 
 # Number of times to run the Python script
 START_INDEX=$1
-NUM_TIMES=$2
-MODEL_TYPE=$3
-BC_DATA=$4
-EXP_ID=$5
+NUM_TIMES=5
+MODEL_TYPE=$2
+BC_DATA=$3
+EXP_ID=$4
+
+OUTPUT_PATH="experiments/$EXP_ID/outputs"
+
+mkdir -p "$OUTPUT_PATH"
+
 
 # Loop to run the Python script multiple times
 for (( i=START_INDEX; i<(NUM_TIMES + START_INDEX); i++ ))
