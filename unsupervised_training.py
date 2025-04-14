@@ -3,6 +3,7 @@ import gymnasium as gym
 from gymnasium.envs.registration import register
 import numpy as np
 import torch
+import random
 import matplotlib.pyplot as plt
 import matplotlib.animation as animation
 from stable_baselines3.common.callbacks import EvalCallback, CheckpointCallback
@@ -16,6 +17,7 @@ import time
 import os
 import re
 from datetime import datetime
+import glob
 
 import behavioural_cloning
 
@@ -33,7 +35,6 @@ EXP_RUN_ID = "NO_EXPERIMENT_ID_SET"
 
 MODEL_PARAMETERS = {}
 
-
 class CheckpointWithOptimizerCallback(CheckpointCallback):
     def __init__(self,
             save_freq: int,
@@ -41,9 +42,12 @@ class CheckpointWithOptimizerCallback(CheckpointCallback):
             name_prefix: str = "rl_model",
             save_replay_buffer: bool = False,
             save_vecnormalize: bool = False,
+            keep: int = 1,
             verbose: int = 0):
         super().__init__(save_freq=save_freq, save_path=save_path, name_prefix=name_prefix, save_replay_buffer=save_replay_buffer, save_vecnormalize=save_vecnormalize, verbose=verbose)
         os.makedirs(save_path, exist_ok=True)  # Ensure directory exists
+        self.replay_buffer_dir = save_path
+        self.keep = keep
 
     def _on_step(self) -> bool:
         if self.n_calls % self.save_freq == 0:
@@ -56,6 +60,23 @@ class CheckpointWithOptimizerCallback(CheckpointCallback):
 
             if self.verbose:
                 print(f"Optimizer state saved: {optimizer_path}")
+
+
+        # if dqn then delete old replay buffers
+        if MODEL_NAME == "DQN":
+            buffer_files = sorted(
+                glob.glob(os.path.join(self.replay_buffer_dir, "DQN_*_replay_buffer_*_steps.pkl")),
+                key=os.path.getmtime,
+                reverse=True
+            )
+
+            for file in buffer_files[self.keep:]:
+                try:
+                    os.remove(file)
+                    if self.verbose > 0:
+                        print(f"Deleted old replay buffer: {file}")
+                except Exception as e:
+                    print(f"Failed to delete {file}: {e}")
 
         return True  # Continue training
 
@@ -175,7 +196,7 @@ def test_ani(env, model, string_timesteps):
 
     env.close()
 
-def set_model_parameters(env, tmp_path):
+def set_model_parameters(env, tmp_path, seed):
     
     if USE_TUNED_PARAMS:
         if MODEL_NAME == "PPO":
@@ -185,6 +206,7 @@ def set_model_parameters(env, tmp_path):
             #     {'learning_rate': 0.00010770959628176507, 'n_epochs': 15, 'batch_size': 1024, 'rl_learning_rate': 0.0002522572555081751, 'rl_batch_size': 512, 'clip_range': 0.3258857369171716, 'rl_n_epochs': 10, 'gamma': 0.9049832219200045, 'gae_lambda': 0.9714527136734751}
 
             tuned_params ={'learning_rate': 0.0034395379546273046, 'n_epochs': 20, 'batch_size': 256, 'rl_learning_rate': 0.0002875045106992828, 'rl_batch_size': 512, 'clip_range': 0.12113817344783348, 'rl_n_epochs': 8, 'gamma': 0.9019615617996611, 'gae_lambda': 0.9137237872887268}
+            # {'rl_learning_rate': 0.0002806092824090833, 'rl_batch_size': 512, 'clip_range': 0.32563002596107826, 'rl_n_epochs': 7, 'gamma': 0.9095935958629116, 'gae_lambda': 0.9107619585604846}. Best is trial 71 with value: 2750.206.
 
             # if TRAINING_DATA_NAME == "None":
             #     # trial 58
@@ -211,6 +233,7 @@ def set_model_parameters(env, tmp_path):
 
             model = MODEL_CLASS(POLICY, 
                         env,
+                        seed=seed,
                         learning_rate=tuned_params['rl_learning_rate'],
                         batch_size=tuned_params['rl_batch_size'],
                         clip_range=tuned_params['clip_range'],
@@ -226,12 +249,12 @@ def set_model_parameters(env, tmp_path):
             return model, tuned_params
     else:
         print(f"Model default parameters being used.")
-        model = MODEL_CLASS(POLICY, env, verbose=1, tensorboard_log=tmp_path)
+        model = MODEL_CLASS(POLICY, env, seed=seed, verbose=1, tensorboard_log=tmp_path)
 
         params = {}
 
         params["learning_rate"] = model.learning_rate
-        params["n_epochs"] = model.n_epochs if MODEL_CLASS is PPO else 10
+        params["n_epochs"] = 20
         params["batch_size"] = model.batch_size
 
         return model, params
@@ -277,6 +300,11 @@ def main(agent_index):
     os.makedirs(model_dir, exist_ok=True)
 
     env = gym.make('MarioEnv-v0')
+
+    np.random.seed(agent_index)
+    random.seed(agent_index)
+    torch.manual_seed(agent_index)
+    # env.seed(agent_index)
 
     print("Creating env")
 
@@ -333,7 +361,7 @@ def main(agent_index):
     # Configure logging
     tmp_path = log_dir + f"{name_prefix}/{run_name}/"
 
-    model, params = set_model_parameters(env, tmp_path)#MODEL_CLASS(POLICY, env, verbose=1, tensorboard_log=tmp_path)
+    model, params = set_model_parameters(env, tmp_path, agent_index)#MODEL_CLASS(POLICY, env, verbose=1, tensorboard_log=tmp_path)
 
     if not UNSUPERVISED:
         bc_model_path = f"{model_path}_bc_only.zip"
@@ -341,7 +369,7 @@ def main(agent_index):
         # check if bc_model exists
         if os.path.exists(bc_model_path):
             print(f"Model file '{bc_model_path}' exists, attempting to load in now:")
-            model = MODEL_CLASS.load(bc_model_path, env, verbose=1, tensorboard_log=tmp_path, print_system_info=True)
+            model = MODEL_CLASS.load(bc_model_path, env, seed=agent_index, verbose=1, tensorboard_log=tmp_path, print_system_info=True)
 
             print("BC Trained model loaded successfully!")
         else:
@@ -351,6 +379,15 @@ def main(agent_index):
             test_ani(env, model, "post_bc_training")
             if ONLY_BC:
                 sys.exit()
+
+        np.random.seed(agent_index)
+        random.seed(agent_index)
+        torch.manual_seed(agent_index)
+        # env.seed(agent_index)
+
+    if EXP_RUN_ID == "random_agents":
+        model.save(model_path)
+        quit()
 
     print("RL Training Info")
     print(f"Model: {MODEL_NAME}, BC dataset: {TRAINING_DATA_NAME}, timesteps: {TIMESTEPS}")
@@ -393,7 +430,7 @@ def main(agent_index):
 
             print(f"Attempting to load in model from: {prev_model_path}")
             try:
-                model = MODEL_CLASS.load(prev_model_path, env, verbose=1, tensorboard_log=tmp_path, print_system_info=True)
+                model = MODEL_CLASS.load(prev_model_path, env, seed=agent_index, verbose=1, tensorboard_log=tmp_path, print_system_info=True)
                 timesteps = TIMESTEPS - steps
                 model_loaded = True
 
@@ -459,4 +496,4 @@ if __name__ == "__main__":
 
     print(f"Starting training for agent {agent_index} with model type: {MODEL_NAME} and using {TRAINING_DATA_NAME} training data.\n\n")
 
-    main(agent_index)
+    main(int(agent_index))

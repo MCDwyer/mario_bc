@@ -37,14 +37,52 @@ TRAINING_FILEPATH += TRAINING_DATA_NAME + "_bc_data.obj"
 # training_data_name = "faster"
 
 ALL_LEVELS = ["Level1-1", "Level2-1", "Level3-1", "Level4-1", "Level5-1", "Level6-1", "Level7-1", "Level8-1"]
-TEST_EPISODES = 100#0
+TEST_EPISODES = 1000
 AGENT_INDICES = list(range(5))
 MAX_Y = 768
 
-def evaluate_model(model, env, level, n_episodes=10):
+def generate_dataset_from_state_actions(dir, filename, level, all_states, all_actions):
+
+    # combine the states and actions together?
+    stacked_states = np.array(all_states[0])
+    print(stacked_states.shape)
+
+    for state_set in all_states[1:]:
+        state_set = np.array(state_set)
+        # state_set = state_set.reshape(state_set.shape[3], state_set.shape[0], state_set.shape[1], state_set.shape[2])
+        stacked_states = np.concatenate((stacked_states, state_set))
+
+    stacked_actions = np.array(all_actions[0])
+    # stacked_actions = stacked_actions.reshape(1, stacked_actions.shape[0])
+    print(stacked_actions.shape)
+
+    for action_set in all_actions[1:]:
+        action_set = np.array(action_set)
+        # action_set = action_set.reshape(1, action_set.shape[0])
+        stacked_actions = np.concatenate((stacked_actions, action_set))
+
+    print(stacked_states.shape)
+    print(stacked_actions.shape)
+
+    if stacked_states.shape[0] != stacked_actions.shape[0]:
+        print(f"Something has gone wrong... :(")
+
+    combined = zip(stacked_actions, stacked_states)
+
+    filepath = f"{dir}{level}_{filename}"
+    with open(f"{filepath}.pkl", "wb") as file:
+        pickle.dump(combined, file)
+        print(f"Dataset saved to: {filepath}.pkl")
+    
+    return
+
+
+def evaluate_model(model, env, level, n_episodes=10, deterministic=False):
 
     all_trajectories = []
     all_actions = []
+    all_states = []
+    all_actions_for_datasets = []
     all_action_distributions = []
     all_dist_rewards = []
     all_score_rewards = []
@@ -69,7 +107,11 @@ def evaluate_model(model, env, level, n_episodes=10):
         done = False
 
         while not done:
-            action, _states = model.predict(obs)
+            action, _states = model.predict(obs, deterministic=deterministic)
+
+            all_states.append(copy.deepcopy(obs))
+            all_actions_for_datasets.append(copy.deepcopy(action))
+
             obs, reward, done, _, info = env.step(int(action))
 
             # env.render()
@@ -124,6 +166,57 @@ def evaluate_model(model, env, level, n_episodes=10):
 
     return all_trajectories, all_actions, all_action_distributions, all_dist_rewards, all_score_rewards, all_combined_rewards, all_max_scores, all_death_types, all_death_logs
 
+def generate_level_dataset_per_model(model, env, level, n_episodes=10):
+
+    all_actions = []
+    all_states = []
+
+    for i in range(n_episodes):
+        obs, _ = env.reset(options={"level": level})
+        done = False
+
+        while not done:
+            action, _states = model.predict(obs)
+
+            all_states.append(copy.deepcopy(obs))
+            all_actions.append(copy.deepcopy(action))
+
+            obs, reward, done, _, info = env.step(int(action))
+
+        print(f"Episode {i} finished.")
+
+
+    return all_states, all_actions
+
+def generate_dataset(agent_type, model_paths, env):
+
+    models = []
+
+    for model_path in model_paths:
+        if "PPO" in model_path:
+            model_class = PPO
+        elif "DQN" in model_path:
+            model_class = DQN
+        else:
+            model_class = SAC
+        
+        models.append(model_class.load(model_path, env, verbose=1))
+
+    for level in ALL_LEVELS:
+        all_states = []
+        all_actions = []
+        
+        print(f"{level} started")
+
+        for i, model in enumerate(models):
+            states, actions = generate_level_dataset_per_model(model, env, level, 12)
+            all_states.append(states)
+            all_actions.append(actions)
+            print(f"Model {model_paths[i]} finished.")
+
+        generate_dataset_from_state_actions("bc_datasets/", f"expert_{agent_type}_agent", level, all_states, all_actions)
+
+        print(f"Data generated for {level}.")
 
 def two_agent_statistical_tests(unsupervised_results, supervised_results):
     # Check the normality:
@@ -219,6 +312,30 @@ def get_model_results(model_path, model_class, env):
                                 })
 
         df_filename = model_path[:-4] + f"/{level}_dataframe.pkl"
+        if not df.empty:
+            print(f"{df_filename} being saved with {len(df.index)} rows of data.")
+            df.to_pickle(df_filename) 
+        else:
+            print(f"{df_filename} not saved as dataframe is empty.")
+
+        # deterministic run
+        all_trajectories, all_actions, all_action_distributions, all_dist_rewards, all_score_rewards, all_combined_rewards, all_max_scores, all_death_types, all_death_logs = evaluate_model(model, env, level, 20, deterministic=True)
+
+        df = pd.DataFrame.from_dict({"trajectories": all_trajectories,
+                                "actions": all_actions,
+                                "dist_rewards": all_dist_rewards,
+                                "score_rewards": all_score_rewards,
+                                "combined_rewards": all_combined_rewards,
+                                "action_distributions": all_action_distributions,
+                                "max_score": all_max_scores,
+                                "fall_ends": all_death_types["fall"],
+                                "enemy_ends": all_death_types["enemy"],
+                                "timeout_ends": all_death_types["timeout"],
+                                "flagpole_ends": all_death_types["flagpole"],
+                                "death_logs": all_death_logs
+                                })
+
+        df_filename = model_path[:-4] + f"/{level}_deterministic_dataframe.pkl"
         if not df.empty:
             print(f"{df_filename} being saved with {len(df.index)} rows of data.")
             df.to_pickle(df_filename) 
@@ -455,6 +572,29 @@ def main():
     env.close()
 
 
+def generate_expert_dataset(agent_type, model_paths):
+    env = gym.make('MarioEnv-v0')
+
+    value = ""
+
+    if EXP_RUN_ID[0].isdigit():
+        for letter in EXP_RUN_ID:
+            if letter.isdigit():
+                value += letter
+            else:
+                break
+        
+    if value.isnumeric():
+        value = -(int(value))
+        env.set_death_penalty(value)
+    else:
+        env.set_death_penalty(None)
+    
+    env.set_reward_function(EXP_RUN_ID)
+
+    generate_dataset(agent_type, model_paths, env)
+
+
 def run_evaluations(saved_model_dir):
 
     env = gym.make('MarioEnv-v0')
@@ -502,8 +642,16 @@ def run_evaluations(saved_model_dir):
                     continue
             file_list.append(filename)
     
-    # file_list = 
     file_list.sort()
+
+    updated_file_list = []
+
+    for filename in file_list:
+        if "best" in filename:
+            if "_0" in filename or "_1" in filename or "_2" in filename or "_3" in filename or "_4" in filename:
+                updated_file_list.append(filename)
+
+    file_list = updated_file_list
 
     file_list = file_list[INDEX:] if INDEX < len(file_list) else file_list
 
@@ -569,3 +717,19 @@ if __name__ == "__main__":
     saved_model_dir = f"experiments/{EXP_RUN_ID}/saved_models/level_change_random/"
 
     run_evaluations(saved_model_dir)
+
+
+    # model_paths = []
+    # filepath_a = "/scratch/mcd2g19/mario_bc/experiments/"
+    # filepath_b = "/saved_models/level_change_random/best_"
+
+    # agent_types = ["unsupervised", "supervised_amalgam", "supervised_expert_distance", "supervised_nonexpert_distance"]
+
+    # for agent_type in agent_types:
+    #     model_paths = []
+    
+    #     for i in range(5):
+    #         model_paths.append(f"{filepath_a}{EXP_RUN_ID}{filepath_b}{agent_type}_PPO_20M_agent_{i}.zip")
+
+    #     generate_expert_dataset(agent_type, model_paths)
+

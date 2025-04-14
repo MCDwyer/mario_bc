@@ -8,15 +8,14 @@ fi
 
 # Number of times to run the Python script
 START_INDEX=$1
-NUM_TIMES=5
+NUM_TIMES=10
 MODEL_TYPE=$2
 BC_DATA=$3
 EXP_ID=$4
 
-OUTPUT_PATH="experiments/$EXP_ID/outputs"
+OUTPUT_PATH="/scratch/mcd2g19/mario_bc/experiments/$EXP_ID/outputs/"
 
 mkdir -p "$OUTPUT_PATH"
-
 
 # Loop to run the Python script multiple times
 for (( i=START_INDEX; i<(NUM_TIMES + START_INDEX); i++ ))
