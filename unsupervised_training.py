@@ -43,11 +43,13 @@ class CheckpointWithOptimizerCallback(CheckpointCallback):
             save_replay_buffer: bool = False,
             save_vecnormalize: bool = False,
             keep: int = 1,
+            index: int = 0,
             verbose: int = 0):
         super().__init__(save_freq=save_freq, save_path=save_path, name_prefix=name_prefix, save_replay_buffer=save_replay_buffer, save_vecnormalize=save_vecnormalize, verbose=verbose)
         os.makedirs(save_path, exist_ok=True)  # Ensure directory exists
         self.replay_buffer_dir = save_path
         self.keep = keep
+        self.index = index
 
     def _on_step(self) -> bool:
         if self.n_calls % self.save_freq == 0:
@@ -65,7 +67,7 @@ class CheckpointWithOptimizerCallback(CheckpointCallback):
         # if dqn then delete old replay buffers
         if MODEL_NAME == "DQN":
             buffer_files = sorted(
-                glob.glob(os.path.join(self.replay_buffer_dir, "DQN_*_replay_buffer_*_steps.pkl")),
+                glob.glob(os.path.join(self.replay_buffer_dir, f"DQN_{self.index}_replay_buffer_*_steps.pkl")),
                 key=os.path.getmtime,
                 reverse=True
             )
@@ -205,8 +207,10 @@ def set_model_parameters(env, tmp_path, seed):
             # elif TRAINING_DATA_NAME == "amalgam":
             #     {'learning_rate': 0.00010770959628176507, 'n_epochs': 15, 'batch_size': 1024, 'rl_learning_rate': 0.0002522572555081751, 'rl_batch_size': 512, 'clip_range': 0.3258857369171716, 'rl_n_epochs': 10, 'gamma': 0.9049832219200045, 'gae_lambda': 0.9714527136734751}
 
+
+            # Trial 36 finished with value: 1364.003 and parameters: 
+            # {'learning_rate': 0.0008258907977455751, 'n_epochs': 25, 'batch_size': 256, 'rl_learning_rate': 0.00031503728368168817, 'rl_batch_size': 1024, 'clip_range': 0.20141494252454878, 'rl_n_epochs': 4, 'gamma': 0.9132126688052203, 'gae_lambda': 0.9359426947238165}. Best is trial 36 with value: 1364.003.
             tuned_params ={'learning_rate': 0.0034395379546273046, 'n_epochs': 20, 'batch_size': 256, 'rl_learning_rate': 0.0002875045106992828, 'rl_batch_size': 512, 'clip_range': 0.12113817344783348, 'rl_n_epochs': 8, 'gamma': 0.9019615617996611, 'gae_lambda': 0.9137237872887268}
-            # {'rl_learning_rate': 0.0002806092824090833, 'rl_batch_size': 512, 'clip_range': 0.32563002596107826, 'rl_n_epochs': 7, 'gamma': 0.9095935958629116, 'gae_lambda': 0.9107619585604846}. Best is trial 71 with value: 2750.206.
 
             # if TRAINING_DATA_NAME == "None":
             #     # trial 58
@@ -413,7 +417,7 @@ def main(agent_index):
                                                    log_path=tmp_path)
 
     checkpoint_callback = CheckpointWithOptimizerCallback(save_freq=SAVE_FREQ, save_path=log_dir,
-                                            name_prefix=name_prefix, save_vecnormalize=True, save_replay_buffer=True)
+                                            name_prefix=name_prefix, save_vecnormalize=True, save_replay_buffer=False, index=agent_index, keep=0)
 
     timesteps = TIMESTEPS
 

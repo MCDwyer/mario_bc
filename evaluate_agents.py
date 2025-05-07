@@ -14,6 +14,8 @@ import shutil
 import copy
 import pandas as pd
 import cv2
+import random
+import torch
 
 TIMESTEPS = 20000000
 UNSUPERVISED = False
@@ -37,7 +39,7 @@ TRAINING_FILEPATH += TRAINING_DATA_NAME + "_bc_data.obj"
 # training_data_name = "faster"
 
 ALL_LEVELS = ["Level1-1", "Level2-1", "Level3-1", "Level4-1", "Level5-1", "Level6-1", "Level7-1", "Level8-1"]
-TEST_EPISODES = 1000
+TEST_EPISODES = 100
 AGENT_INDICES = list(range(5))
 MAX_Y = 768
 
@@ -92,6 +94,10 @@ def evaluate_model(model, env, level, n_episodes=10, deterministic=False):
     all_death_logs = []
 
     for i in range(n_episodes):
+        np.random.seed(i)
+        random.seed(i)
+        torch.manual_seed(i)
+
         trajectory = []
         action_distribution = np.zeros(13, dtype=int)
         actions = []
@@ -640,18 +646,20 @@ def run_evaluations(saved_model_dir):
             if NO_BC_ONLY:
                 if filename.endswith("bc_only.zip"):
                     continue
-            file_list.append(filename)
+
+            if "best" in filename:
+                file_list.append(filename)
     
     file_list.sort()
 
-    updated_file_list = []
+    # updated_file_list = []
 
-    for filename in file_list:
-        if "best" in filename:
-            if "_0" in filename or "_1" in filename or "_2" in filename or "_3" in filename or "_4" in filename:
-                updated_file_list.append(filename)
+    # for filename in file_list:
+    #     if "best" in filename:# or "bc_only" in filename:
+    #         # if "_0" in filename or "_1" in filename or "_2" in filename or "_3" in filename or "_4" in filename:
+    #         updated_file_list.append(filename)
 
-    file_list = updated_file_list
+    # file_list = updated_file_list
 
     file_list = file_list[INDEX:] if INDEX < len(file_list) else file_list
 
@@ -699,7 +707,7 @@ def run_evaluations(saved_model_dir):
             # else:
             #     print("Error: Zip creation failed, directory not deleted.")
 
-NO_BC_ONLY = True
+NO_BC_ONLY = False
 
 if __name__ == "__main__":
     if len(sys.argv) != 3:
@@ -714,22 +722,22 @@ if __name__ == "__main__":
     EXP_RUN_ID = sys.argv[1]
     INDEX = int(sys.argv[2])
 
-    saved_model_dir = f"experiments/{EXP_RUN_ID}/saved_models/level_change_random/"
+    # saved_model_dir = f"experiments/{EXP_RUN_ID}/saved_models/level_change_random/"
 
-    run_evaluations(saved_model_dir)
+    # run_evaluations(saved_model_dir)
 
 
-    # model_paths = []
-    # filepath_a = "/scratch/mcd2g19/mario_bc/experiments/"
-    # filepath_b = "/saved_models/level_change_random/best_"
+    model_paths = []
+    filepath_a = "/scratch/mcd2g19/mario_bc/experiments/"
+    filepath_b = "/saved_models/level_change_random/best_"
 
-    # agent_types = ["unsupervised", "supervised_amalgam", "supervised_expert_distance", "supervised_nonexpert_distance"]
+    agent_types = ["unsupervised", "supervised_amalgam", "supervised_expert_distance", "supervised_nonexpert_distance"]
 
-    # for agent_type in agent_types:
-    #     model_paths = []
+    for agent_type in agent_types:
+        model_paths = []
     
-    #     for i in range(5):
-    #         model_paths.append(f"{filepath_a}{EXP_RUN_ID}{filepath_b}{agent_type}_PPO_20M_agent_{i}.zip")
+        for i in range(5):
+            model_paths.append(f"{filepath_a}{EXP_RUN_ID}{filepath_b}{agent_type}_PPO_20M_agent_{i}.zip")
 
-    #     generate_expert_dataset(agent_type, model_paths)
+        generate_expert_dataset(agent_type, model_paths)
 

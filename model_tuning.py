@@ -23,9 +23,27 @@ def objective(trial):
 
     env = gym.make('MarioEnv-v0')
 
+    value = ""
+
+    if EXP_RUN_ID[0].isdigit():
+        for letter in EXP_RUN_ID:
+            if letter.isdigit():
+                value += letter
+            else:
+                break
+        
+    if value.isnumeric():
+        value = -(int(value))
+        env.set_death_penalty(value)
+    else:
+        env.set_death_penalty(None)
+
+    env.set_reward_function(EXP_RUN_ID)
+    # env.set_death_penalty(-25)
     env.reset()
 
     n_stack = 1
+    env = Monitor(env)
 
     if USE_BC:
         # Suggest hyperparameters
@@ -41,100 +59,90 @@ def objective(trial):
         if MODEL_NAME == 'SAC':
             env = DiscreteToBoxWrapper(env)
 
-        env = Monitor(env)
-        model = MODEL_CLASS('CnnPolicy', env)
+    try:
+        rl_learning_rate = trial.suggest_float('rl_learning_rate', 1e-5, 1e-3, log=True)
+        rl_batch_size = trial.suggest_categorical('rl_batch_size', [32, 64, 128, 256, 512, 1024])
+        # # Frame stacking
+        # n_stack = trial.suggest_categorical('n_stack', [1, 2, 4])
 
-    else:
-        try:
-            rl_learning_rate = trial.suggest_float('rl_learning_rate', 1e-5, 1e-3, log=True)
-            rl_batch_size = trial.suggest_categorical('rl_batch_size', [32, 64, 128, 256, 512, 1024])
-            # # Frame stacking
-            # n_stack = trial.suggest_categorical('n_stack', [1, 2, 4])
+        # env.n_stack = n_stack
 
-            # env.n_stack = n_stack
+        if MODEL_CLASS == PPO:
+            env = Monitor(env)
 
-            if MODEL_CLASS == PPO:
-                env = Monitor(env)
+            # Hyperparameters to tune
+            clip_range = trial.suggest_float('clip_range', 0.1, 0.4)
+            rl_n_epochs = trial.suggest_int('rl_n_epochs', 3, 10)
+            gamma = trial.suggest_float('gamma', 0.9, 0.9999)
+            gae_lambda = trial.suggest_float('gae_lambda', 0.9, 1.0)
 
-                # Hyperparameters to tune
-                clip_range = trial.suggest_float('clip_range', 0.1, 0.4)
-                rl_n_epochs = trial.suggest_int('rl_n_epochs', 3, 10)
-                gamma = trial.suggest_float('gamma', 0.9, 0.9999)
-                gae_lambda = trial.suggest_float('gae_lambda', 0.9, 1.0)
+            # Create the PPO model with CnnPolicy
+            model = PPO('CnnPolicy', env,
+                        learning_rate=rl_learning_rate,
+                        batch_size=rl_batch_size,
+                        clip_range=clip_range,
+                        n_epochs=rl_n_epochs,
+                        gamma=gamma,
+                        gae_lambda=gae_lambda,
+                        verbose=1
+                        )
+            
+        elif MODEL_CLASS == DQN:
+            env = Monitor(env)
 
-                # Create the PPO model with CnnPolicy
-                model = PPO('CnnPolicy', env,
-                            learning_rate=rl_learning_rate,
-                            batch_size=rl_batch_size,
-                            clip_range=clip_range,
-                            n_epochs=rl_n_epochs,
-                            gamma=gamma,
-                            gae_lambda=gae_lambda,
-                            verbose=1
-                            )
-                
-            elif MODEL_CLASS == DQN:
-                env = Monitor(env)
+            # DQN hyperparameters to tune
+            buffer_size = trial.suggest_int('buffer_size', 50000, 1000000)
+            target_update_interval = trial.suggest_int('target_update_interval', 1000, 10000)
+            exploration_initial_eps = trial.suggest_float('exploration_initial_eps', 0.1, 1.0)
+            exploration_final_eps = trial.suggest_float('exploration_final_eps', 0.01, 0.1)
+            exploration_fraction = trial.suggest_float('exploration_fraction', 0.01, 0.5)
 
-                # DQN hyperparameters to tune
-                buffer_size = trial.suggest_int('buffer_size', 50000, 1000000)
-                target_update_interval = trial.suggest_int('target_update_interval', 1000, 10000)
-                exploration_initial_eps = trial.suggest_float('exploration_initial_eps', 0.1, 1.0)
-                exploration_final_eps = trial.suggest_float('exploration_final_eps', 0.01, 0.1)
-                exploration_fraction = trial.suggest_float('exploration_fraction', 0.01, 0.5)
+            # Create the DQN model with CnnPolicy
+            model = DQN('CnnPolicy', env,
+                        learning_rate=rl_learning_rate,
+                        batch_size=rl_batch_size,
+                        buffer_size=buffer_size,
+                        target_update_interval=target_update_interval,
+                        exploration_initial_eps=exploration_initial_eps,
+                        exploration_final_eps=exploration_final_eps,
+                        exploration_fraction=exploration_fraction,
+                        verbose=1
+                        )
+        elif MODEL_CLASS == SAC:
+            env = DiscreteToBoxWrapper(env)
+            env = Monitor(env)
 
-                # Create the DQN model with CnnPolicy
-                model = DQN('CnnPolicy', env,
-                            learning_rate=rl_learning_rate,
-                            batch_size=rl_batch_size,
-                            buffer_size=buffer_size,
-                            target_update_interval=target_update_interval,
-                            exploration_initial_eps=exploration_initial_eps,
-                            exploration_final_eps=exploration_final_eps,
-                            exploration_fraction=exploration_fraction,
-                            verbose=1
-                            )
-            elif MODEL_CLASS == SAC:
-                env = DiscreteToBoxWrapper(env)
-                env = Monitor(env)
+            buffer_size = trial.suggest_int('buffer_size', 50000, 1000000)
+            gamma = trial.suggest_float('gamma', 0.9, 0.9999)
+            tau = trial.suggest_float('tau', 1e-4, 0.005, log=True)
+            learning_starts = trial.suggest_int('learning_starts', 1000, 20000)
+            training_freq = trial.suggest_categorical('training_freq', [1, 5, 10, 50, 100, 500, 1000, 5000])
+            gradient_updates = trial.suggest_categorical('gradient_updates', [1, 5, 10, 50, 100, 500, 1000, 5000])
 
-                buffer_size = trial.suggest_int('buffer_size', 50000, 1000000)
-                gamma = trial.suggest_float('gamma', 0.9, 0.9999)
-                tau = trial.suggest_float('tau', 1e-4, 0.005, log=True)
-                learning_starts = trial.suggest_int('learning_starts', 1000, 20000)
-                training_freq = trial.suggest_categorical('training_freq', [1, 5, 10, 50, 100, 500, 1000, 5000])
-                gradient_updates = trial.suggest_categorical('gradient_updates', [1, 5, 10, 50, 100, 500, 1000, 5000])
+            # Create the SAC model with CnnPolicy
+            model = SAC('CnnPolicy', env,
+                learning_rate=rl_learning_rate,
+                batch_size=rl_batch_size,
+                buffer_size=buffer_size,
+                gamma=gamma,
+                tau=tau,
+                learning_starts=learning_starts,
+                train_freq=training_freq,
+                gradient_steps=gradient_updates,
+                verbose=2
+                )
 
-                # Create the SAC model with CnnPolicy
-                model = SAC('CnnPolicy', env,
-                    learning_rate=rl_learning_rate,
-                    batch_size=rl_batch_size,
-                    buffer_size=buffer_size,
-                    gamma=gamma,
-                    tau=tau,
-                    learning_starts=learning_starts,
-                    train_freq=training_freq,
-                    gradient_steps=gradient_updates,
-                    verbose=2
-                    )
-
-        except ValueError as err:
-            print(err)
-            return -10000
+    except ValueError as err:
+        print(err)
+        return -10000
 
     if USE_BC:
         bc_model_path = f"{MODEL_NAME}_tuning_bc"
         start_time = time.time()
 
-        model = behavioural_cloning.behavioural_cloning(MODEL_NAME, model, env, TRAINING_FILEPATH, bc_model_path, lr=learning_rate, num_epochs=num_epochs, batch_size=batch_size, n_stack=n_stack)
+        model = behavioural_cloning.behavioural_cloning(MODEL_NAME, model, ["Level1-1", "Level2-1", "Level4-1", "Level5-1", "Level6-1", "Level8-1"], TRAINING_DATA_NAME, bc_model_path, lr=learning_rate, num_epochs=num_epochs, batch_size=batch_size, n_stack=n_stack)
 
         print(f"Took {int(time.time() - start_time)}s to run behavioural cloning.")
-        
-        # Evaluate the model
-        mean_reward, _ = evaluate_model(model, env)
-        env.close()
-
-        return mean_reward
 
     start_time = time.time()
     # # Train the model for a certain number of timesteps
@@ -221,8 +229,8 @@ def run_study(filepath):
     # optuna.visualization.plot_param_importances(study).show()
 
 if __name__ == "__main__":
-    if len(sys.argv) != 3:
-        print("Usage: python model_tuning.py <training_data_name> <model>")
+    if len(sys.argv) != 4:
+        print("Usage: python model_tuning.py <training_data_name> <model> <exp_id>")
         sys.exit(1)
 
     # Define the environment
@@ -236,6 +244,7 @@ if __name__ == "__main__":
     USE_BC = not (TRAINING_DATA_NAME == "None")
 
     MODEL_NAME = sys.argv[2]
+    EXP_RUN_ID = sys.argv[3]
 
     if MODEL_NAME == "PPO":
         MODEL_CLASS = PPO
